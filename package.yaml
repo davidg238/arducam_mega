@@ -1,0 +1,3 @@
+# Toit Package File.
+name: arducam_mega
+description: A library for the ArduCam cameras
