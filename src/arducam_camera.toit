@@ -134,12 +134,7 @@ SENSOR_3MP_1 ::= 0x82
 SENSOR_5MP_2 ::= 0x83 /* 2592x1936 */
 SENSOR_3MP_2 ::= 0x84
 
-/*TODO 
- typedef uint8_t (*BUFFER_CALLBACK)(uint8_t* buffer, uint8_t lenght); /**<Callback function prototype  */
- typedef void (*STOP_HANDLE)(void);                                   /**<Callback function prototype  */
 
- uint8_t cameraHeartBeat(ArducamCamera* camera);
- */
  
 CAM-STATUS-UNINIT ::= 0 /**< Camera is not initialized */
 CAM-STATUS-INIT   ::= 1 /**< Camera is initialized */
@@ -256,12 +251,7 @@ OV3640-GAIN-VALUE ::= [ 0x00, 0x10, 0x18, 0x30, 0x34, 0x38, 0x3b, 0x3f,
                         0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff
                       ]
  
-/*TODO 
- struct cameraDefaultState {
-     uint8_t cameraDefaultFormat;
-     uint8_t cameraDefaultResolution;
- };
-*/ 
+
  
 class CameraInfo:
   camera-id /string
@@ -298,20 +288,7 @@ class CameraInfo:
     support-sharpness = true
     device-address    = DEVICE-ADDRESS
  
-/*TODO 
- struct CameraInfo* CameraType[CAMERA_TYPE_NUMBER];
- // struct cameraDefaultState DefaultState_5mp = {
- //     .cameraDefaultFormat = CAM_IMAGE_PIX_FMT_JPG,
- //     .cameraDefaultResolution = CAM_IMAGE_MODE_WQXGA2,
- // };
- 
- // struct cameraDefaultState DefaultState_3mp = {
- //     .cameraDefaultFormat = CAM_IMAGE_PIX_FMT_JPG,
- //     .cameraDefaultResolution = CAM_IMAGE_MODE_QXGA,
- // };
- 
 
- */
 
 class ArducamCamera:
   cs  /gpio.Pin                                      /**< CS pin */
@@ -322,18 +299,14 @@ class ArducamCamera:
 
   total-length /int       := -1                        /**< The total length of the picture */
   received-length /int    := -1                        /**< The remaining length of the picture */
-  // uint8_t cameraDataFormat;                       /**< The currently set image pixel format */
+
   burst-first-flag /bool  := false                        /**< Flag bit for reading data for the first time in burst mode */
   preview-mode /bool      := false                       /**< Stream mode flag */
   current-pixel-format /int := -1                     /**< The currently set image pixel format */
   current-picture-mode /int := -1                      /**< Currently set resolution */
   camera-info /CameraInfo? := null                 /**< Basic information of the current camera */
   ver-date-and-number /List := [1970, 1, 1, 0]          /**< Version information of the camera module */
-  
-  // BUFFER_CALLBACK callBackFunction               /**< Camera callback function */
-  // STOP_HANDLE handle
-  // blockSize /int                              /**< The length of the callback function transmission */
-  
+
   constructor --.spi-bus/spi.Bus --.cs/gpio.Pin:
     camera = spi-bus.device --cs=cs --frequency=8_000_000  // Use 8MHz for better compatibility
     camera-id = ""
@@ -408,57 +381,22 @@ class ArducamCamera:
     if num > CAPTURE_MAX_NUM: num = CAPTURE_MAX_NUM
     write-reg ARDUCHIP_FRAMES num
     set-capture
- /*TODO
-  register-callback BUFFER_CALLBACK function, uint8_t size, STOP_HANDLE handle)
- {
-     camera->callBackFunction = function;
-     camera->blockSize        = size;
-     camera->handle           = handle;
- }
- */
-
- /*TODO preview-mode
   start-preview mode/int -> none:
-    // camera->cameraDataFormat = CAM_IMAGE_PIX_FMT_JPG;
-    preview-mode = TRUE
-    if (null == callback): throw "callback function is null"
-    writeReg CAM_REG_FORMAT CAM_IMAGE_PIX_FMT_JPG // set  jpeg format
-    waitI2cIdle
-    writeReg CAM_REG_CAPTURE_RESOLUTION (CAM_SET_VIDEO_MODE | mode) // set  video mode
-    waitI2cIdle
-    setCapture
+    preview-mode = true
+    write-reg CAM_REG_FORMAT CAM_IMAGE_PIX_FMT_JPG
+    wait-idle
+    write-reg CAM_REG_CAPTURE_RESOLUTION (CAM_SET_VIDEO_MODE | mode)
+    wait-idle
+    set-capture
 
-
- static uint8_t callBackBuff[PREVIEW_BUF_LEN];
- 
- void cameraCaptureThread(ArducamCamera* camera)
- {
-     if (camera->previewMode) {
-         uint8_t callBackLength = readBuff(camera, callBackBuff, camera->blockSize);
-         if (callBackLength != FALSE) {
-             camera->callBackFunction(callBackBuff, callBackLength);
-         } else {
-             setCapture(camera);
-         }
-     }
- }
- 
- CamStatus cameraStopPreview(ArducamCamera* camera)
- {
-     if (camera->previewMode == TRUE && camera->handle != 0) {
-         camera->handle();
-     }
- 
-     camera->currentPixelFormat = CAM_IMAGE_PIX_FMT_JPG;
-     camera->currentPictureMode = CAM_IMAGE_MODE_QVGA;
-     camera->previewMode        = FALSE;
-     camera->receivedLength     = 0;
-     camera->totalLength        = 0;
-     writeReg(camera, CAM_REG_FORMAT, CAM_IMAGE_PIX_FMT_JPG); // set  jpeg format
-     waitI2cIdle(camera);                                     // Wait I2c Idle
-     return CAM_ERR_SUCCESS;
- }
- */
+  stop-preview -> none:
+    current-pixel-format = CAM_IMAGE_PIX_FMT_JPG
+    current-picture-mode = CAM_IMAGE_MODE_QVGA
+    preview-mode = false
+    received-length = 0
+    total-length = 0
+    write-reg CAM_REG_FORMAT CAM_IMAGE_PIX_FMT_JPG
+    wait-idle
   set-image-quality quality/int -> none:
     write-reg CAM_REG_IMAGE_QUALITY quality
 
@@ -547,128 +485,7 @@ Helper methods
     len3   := readReg camera FIFO_SIZE3
     length := ((len3 << 16) | (len2 << 8) | len1) & 0xffffff;
     return length;
- 
- uint8_t cameraGetBit(ArducamCamera* camera, uint8_t addr, uint8_t bit)
- {
-     uint8_t temp;
-     temp = readReg(camera, addr);
-     temp = temp & bit;
-     return temp;
- }
- 
-  camera-set-fifo-burst -> none:
-    arducamSpiTransfer BURST_FIFO_READ
- 
-  read-byte -> uint8_t:
- {
-     uint8_t data = 0;
-     arducamSpiCsPinLow(camera->csPin);
-     arducamSpiTransfer(SINGLE_FIFO_READ);
-     arducamSpiTransfer(0x00);
-     data = arducamSpiTransfer(0x00);
-     arducamSpiCsPinHigh(camera->csPin);
-     camera->receivedLength -= 1;
-     return data;
- }
- 
- uint32_t cameraReadBuff(ArducamCamera* camera, uint8_t* buff, uint32_t length)
- 
- {
-     if (imageAvailable(camera) == 0 || (length == 0)) {
-         return 0;
-     }
- 
-     if (camera->receivedLength < length) {
-         length = camera->receivedLength;
-     }
- 
-     arducamSpiCsPinLow(camera->csPin);
-     setFifoBurst(camera);
-     if (camera->burstFirstFlag == 0) {
-         camera->burstFirstFlag = 1;
-         arducamSpiTransfer(0x00);
-     }
- 
- #ifndef arducamSpiReadBlock
-     for (uint32_t count = 0; count < length; count++) {
-         buff[count] = arducamSpiTransfer(0x00);
-     }
- #else
-     arducamSpiReadBlock(buff, length);
- #endif
-     arducamSpiCsPinHigh(camera->csPin);
-     camera->receivedLength -= length;
-     return length;
- }
- 
-  writeReg addr/int val/int -> none:
-   busWrite (addr | 0x80) val
- 
- uint8_t cameraReadReg(ArducamCamera* camera, uint8_t addr)
- {
-     uint8_t data;
-     data = busRead(camera, addr & 0x7F);
-     return data;
- }
- 
- uint8_t cameraBusWrite(ArducamCamera* camera, int address, int value)
- {
-     arducamSpiCsPinLow(camera->csPin);
-     arducamSpiTransfer(address);
-     arducamSpiTransfer(value);
-     arducamSpiCsPinHigh(camera->csPin);
-     arducamDelayMs(1);
-     return 1;
- }
- 
- void cameraCsHigh(ArducamCamera* camera)
- {
-     arducamSpiCsPinHigh(camera->csPin);
- }
- void cameraCsLow(ArducamCamera* camera)
- {
-     arducamSpiCsPinLow(camera->csPin);
- }
- 
- uint8_t cameraBusRead(ArducamCamera* camera, int address)
- {
-     uint8_t value;
-     arducamSpiCsPinLow(camera->csPin);
-     arducamSpiTransfer(address);
-     value = arducamSpiTransfer(0x00);
-     value = arducamSpiTransfer(0x00);
-     arducamSpiCsPinHigh(camera->csPin);
-     return value;
- }
- 
 
- 
- uint8_t cameraHeartBeat(ArducamCamera* camera)
- {
-     return (readReg(camera, CAM_REG_SENSOR_STATE) & 0X03) == CAM_REG_SENSOR_STATE_IDLE;
- }
- 
- void cameraDebugWriteRegister(ArducamCamera* camera, uint8_t* buff)
- {
-     uint8_t register_high = buff[0];
-     uint8_t register_low  = buff[1];
-     uint8_t value         = buff[2];
-     writeReg(camera, CAM_REG_DEBUG_REGISTER_HIGH, register_high);
-     writeReg(camera, CAM_REG_DEBUG_REGISTER_LOW, register_low);
-     writeReg(camera, CAM_REG_DEBUG_REGISTER_VALUE, value);
- }
- 
- void cameraLowPowerOn(ArducamCamera* camera)
- {
-     writeReg(camera, CAM_REG_POWER_CONTROL, 0X07);
- }
- 
- void cameraLowPowerOff(ArducamCamera* camera)
- {
-     writeReg(camera, CAM_REG_POWER_CONTROL, 0X05);
- }
- 
- 
  
   // ArduCam-specific SPI register write protocol
   write-reg addr/int val/int -> none:
