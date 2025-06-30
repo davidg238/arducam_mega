@@ -515,19 +515,19 @@ Helper methods
  
   // ArduCam-specific SPI register write protocol
   write-reg addr/int val/int -> none:
-    sleep --ms=5  // Longer delay
+    sleep --ms=2
     camera.write #[addr | 0x80, val]
-    sleep --ms=5  // Much longer delay
+    sleep --ms=3  // Delay for write to complete
  
   // ArduCam-specific SPI register read protocol  
   read-reg addr/int -> int:
-    // Try the absolute simplest approach
-    sleep --ms=5  // Longer delay
-    camera.write #[addr & 0x7F]  // Just send address
-    sleep --ms=5  
-    data := camera.read 1  // Read response
-    sleep --ms=5
-    return data[0]
+    // Try combined write-read in single transaction
+    sleep --ms=2
+    // Send address and immediately read response in one operation
+    camera.write #[addr & 0x7F, 0x00]  // Address + dummy byte
+    result := camera.read 2  // Read 2 bytes (dummy + actual data)
+    sleep --ms=2
+    return result[1]  // Return the second byte (actual data)
   wait-idle -> none:
     while (read-reg CAM_REG_SENSOR_STATE & 0x03) != CAM_REG_SENSOR_STATE_IDLE:
       sleep --ms=2
