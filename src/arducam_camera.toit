@@ -336,6 +336,11 @@ class ArducamCamera:
     index := read-reg CAM_REG_SENSOR_ID
     print "Sensor ID: 0x$(index.stringify 16)"
     
+    // Try reading a few more registers for debugging
+    reg-test1 := read-reg 0x00  // Test register
+    reg-test2 := read-reg 0x01  // Another register
+    print "Debug: reg 0x00=0x$(reg-test1.stringify 16), reg 0x01=0x$(reg-test2.stringify 16)"
+    
     if index == SENSOR_5MP_2:
       camera-info = CameraInfo.camera-info-5MP --camera-id="5MP_2"
       print "Detected 5MP_2 camera"
@@ -477,14 +482,14 @@ Helper methods
  
   // ArduCam-specific SPI register write protocol
   write-reg addr/int val/int -> none:
-    camera.write #[addr | 0x80, val]
-    sleep --ms=1
+    camera.transfer #[addr | 0x80, val]
+    sleep --ms=2  // Slightly longer delay for reliability
  
   // ArduCam-specific SPI register read protocol  
   read-reg addr/int -> int:
-    camera.write #[addr & 0x7F, 0x00]
-    data := camera.read 1
-    return data[0]
+    // ArduCam protocol: send address, then read response with dummy byte
+    result := camera.transfer #[addr & 0x7F, 0x00, 0x00]
+    return result[2]  // Data comes in the third byte
   wait-idle -> none:
     while (read-reg CAM_REG_SENSOR_STATE & 0x03) != CAM_REG_SENSOR_STATE_IDLE:
       sleep --ms=2
