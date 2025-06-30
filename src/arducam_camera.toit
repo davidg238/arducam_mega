@@ -506,19 +506,24 @@ Helper methods
  
   // ArduCam-specific SPI register write protocol
   write-reg addr/int val/int -> none:
+    buffer := ByteArray 2
+    buffer[0] = addr | 0x80  // Write address (bit 7 = 1)
+    buffer[1] = val
     sleep --ms=1
-    camera.write #[addr | 0x80, val]
+    camera.transfer buffer
     sleep --ms=2  // Longer delay for reliability
  
   // ArduCam-specific SPI register read protocol  
   read-reg addr/int -> int:
-    // Use separate write and read operations
+    // Use transfer for atomic read operation
+    buffer := ByteArray 3
+    buffer[0] = addr & 0x7F  // Read address (bit 7 = 0)
+    buffer[1] = 0x00         // Dummy byte  
+    buffer[2] = 0x00         // Will contain response
     sleep --ms=1
-    camera.write #[addr & 0x7F, 0x00]  // Send address + dummy byte
+    camera.transfer buffer
     sleep --ms=1
-    data := camera.read 1  // Read response
-    sleep --ms=1
-    return data[0]
+    return buffer[2]  // Response is in third byte
   wait-idle -> none:
     while (read-reg CAM_REG_SENSOR_STATE & 0x03) != CAM_REG_SENSOR_STATE_IDLE:
       sleep --ms=2
