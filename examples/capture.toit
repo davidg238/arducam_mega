@@ -1,9 +1,6 @@
 // Copyright 2024 Ekorau LLC
 
 import arducam_mega show *
-import encoding.json
-import encoding.tison
-import writer
 import host.file
 import .sdcard
 
@@ -12,7 +9,6 @@ import gpio
 
 
 main:
-
   bus := spi.Bus
         --miso=gpio.Pin 19
         --mosi=gpio.Pin 23
@@ -22,18 +18,45 @@ main:
       --spi-bus=bus
       --cs=gpio.Pin 5
 
-  camera := ArducamCamera
-      --spi-bus=bus
-      --cs=gpio.Pin 99  //TODO: find the correct pin
+  // Try a few common CS pins for ArduCam
+  camera-cs-pins := [gpio.Pin 15, gpio.Pin 2, gpio.Pin 4, gpio.Pin 16]
+  
+  camera := null
+  
+  camera-cs-pins.do: | pin |
+    if camera == null:
+      try:
+        print "Trying camera CS pin $pin.num"
+        test-camera := ArducamCamera --spi-bus=bus --cs=pin
+        test-camera.on
+        // If we get here without exception, camera initialized successfully
+        camera = test-camera
+        print "Camera successfully initialized on CS pin $pin.num"
+      finally: | is-exception exception |
+        if is-exception:
+          print "Failed on CS pin $pin.num: $exception"
+  
+  if camera == null:
+    print "Could not initialize camera on any CS pin"
+    return
 
-  camera.on
-
-  filename := "macbeth.txt"
-  filer := sdcard.openw "/sd/$filename"
-
-  print "read $filename from server"
-  count := client.read filename --to-writer=(writer.Writer filer)
-  filer.close
-  print "Read $count bytes"
-
-  client.close
+  // Test SD card functionality
+  filename := "hello.txt"
+  try:
+    filer := sdcard.openr "/sd/$filename"
+    content := filer.read
+    filer.close
+    print "/sd/$filename contents  ---------------------------------------------"
+    print content.to-string
+    print "-----------------------------------------------------------------"
+  finally: | is-exception exception |
+    if is-exception:
+      print "Error reading file: $exception"
+  
+  // List SD card contents
+  try:
+    files := file.list-directory "/sd"
+    files.do: print it
+  finally: | is-exception exception |
+    if is-exception:
+      print "Error listing directory: $exception"

@@ -335,68 +335,79 @@ class ArducamCamera:
   // STOP_HANDLE handle
   // blockSize /int                              /**< The length of the callback function transmission */
   
-  constructor --.spi-bus/spi.Bus --.cs/gpio.Pin :
-    camera = spi-bus.device --cs=cs --frequency=10_000_000
-    registers = camera.registers
+  constructor --.spi-bus/spi.Bus --.cs/gpio.Pin:
+    camera = spi-bus.device --cs=cs --frequency=8_000_000  // Use 8MHz for better compatibility
     camera-id = ""
-    current-pixel-format  = CAM_IMAGE_PIX_FMT_NONE
-    current-picture-mode  = CAM_IMAGE_MODE_NONE
+    current-pixel-format = CAM_IMAGE_PIX_FMT_NONE
+    current-picture-mode = CAM_IMAGE_MODE_NONE
 
   on -> none:
-     // reset cpld and camera
-    registers.write-u8 CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
+    print "Camera init"
+    // Reset CPLD and camera
+    write-reg CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
+    sleep --ms=100  // Give time for reset
+    
     get-sensor-config
-    ver-date-and-number[0] = registers.read-u8 CAM_REG_YEAR_ID & 0x3F; // year
-    ver-date-and-number[1] = registers.read-u8 CAM_REG_MONTH_ID & 0x0F; // month
-    ver-date-and-number[2] = registers.read-u8 CAM_REG_DAY_ID & 0x1F; // day
-    ver-date-and-number[3] = registers.read-u8 CAM_REG_FPGA_VERSION_NUMBER & 0xFF; // version
+    
+    // Read version information
+    ver-date-and-number[0] = read-reg CAM_REG_YEAR_ID & 0x3F       // year
+    ver-date-and-number[1] = read-reg CAM_REG_MONTH_ID & 0x0F      // month
+    ver-date-and-number[2] = read-reg CAM_REG_DAY_ID & 0x1F        // day
+    ver-date-and-number[3] = read-reg CAM_REG_FPGA_VERSION_NUMBER & 0xFF  // version
 
-    registers.write-u8 CAM_REG_DEBUG_DEVICE_ADDRESS camera-info.device-address
+    print "Camera date $ver-date-and-number[0] $ver-date-and-number[1] $ver-date-and-number[2] version $ver-date-and-number[3]"
+    
+    if camera-info:
+      write-reg CAM_REG_DEBUG_DEVICE_ADDRESS camera-info.device-address
   
   get-sensor-config -> none:
-    index := registers.read-u8 CAM_REG_SENSOR_ID
+    index := read-reg CAM_REG_SENSOR_ID
+    print "Sensor ID: 0x$(index.stringify 16)"
+    
     if index == SENSOR_5MP_2:
       camera-info = CameraInfo.camera-info-5MP --camera-id="5MP_2"
+      print "Detected 5MP_2 camera"
     else if index == SENSOR_5MP_1: 
       camera-info = CameraInfo.camera-info-5MP
+      print "Detected 5MP_1 camera"
     else:
       camera-info = CameraInfo.camera-info-3MP
+      print "Detected 3MP camera (default)"
   
   set-capture -> none:
-    // flushFifo(camera);
     clear-fifo-flag
     start-capture
-    while (getBit ARDUCHIP_TRIG CAP_DONE_MASK == 0):
+    while (get-bit ARDUCHIP_TRIG CAP_DONE_MASK) == 0:
       sleep --ms=2
-    received-length = readFifoLength;
-    total-length    = received-length;
+    received-length = read-fifo-length
+    total-length = received-length
     burst-first-flag = false
 
   image-available -> int:
     return received-length
  
-  set-autofocus val /int -> none:
-    registers.write-u8 CAM_REG_AUTO_FOCUS_CONTROL val // auto focus control
+  set-autofocus val/int -> none:
+    write-reg CAM_REG_AUTO_FOCUS_CONTROL val
  
   take-picture mode/int pixel-format/int -> none:
     if current-pixel-format != pixel-format:
-      current-pixel-format = pixel_format
-      registers.write-u8 CAM_REG_FORMAT pixel_format  // set the data format
+      current-pixel-format = pixel-format
+      write-reg CAM_REG_FORMAT pixel-format
     if current-picture-mode != mode:
       current-picture-mode = mode
-      registers.write-u8 CAM_REG_CAPTURE_RESOLUTION (CAM_SET_CAPTURE_MODE | mode)
+      write-reg CAM_REG_CAPTURE_RESOLUTION (CAM_SET_CAPTURE_MODE | mode)
     set-capture
  
-  take-multi-pictures mode/int pixel_format/int num/int -> none:
-    if current-pixel-format != pixel_format: 
-      current-pixel-format = pixel_format
-      registers.write-u8 CAM_REG_FORMAT pixel_format  // set the data format
+  take-multi-pictures mode/int pixel-format/int num/int -> none:
+    if current-pixel-format != pixel-format: 
+      current-pixel-format = pixel-format
+      write-reg CAM_REG_FORMAT pixel-format
     if current-picture-mode != mode:
-      current-picture-mode = mode;
-      registers.write-u8 CAM_REG_CAPTURE_RESOLUTION (CAM_SET_CAPTURE_MODE | mode)
+      current-picture-mode = mode
+      write-reg CAM_REG_CAPTURE_RESOLUTION (CAM_SET_CAPTURE_MODE | mode)
 
-    if (num > CAPTURE_MAX_NUM):  num = CAPTURE_MAX_NUM
-    registers.write-u8 ARDUCHIP_FRAMES num
+    if num > CAPTURE_MAX_NUM: num = CAPTURE_MAX_NUM
+    write-reg ARDUCHIP_FRAMES num
     set-capture
  /*TODO
   register-callback BUFFER_CALLBACK function, uint8_t size, STOP_HANDLE handle)
@@ -449,86 +460,85 @@ class ArducamCamera:
      return CAM_ERR_SUCCESS;
  }
  */
-  set-image-quality quality/int:
-    registers.write-u8 CAM_REG_IMAGE_QUALITY quality
+  set-image-quality quality/int -> none:
+    write-reg CAM_REG_IMAGE_QUALITY quality
 
 
 /** 
   reset cpld and camera
 */
   reset -> none:
-    registers.write-u8 CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
+    write-reg CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
  
   set-auto-white-balance-mode mode/int -> none:
-    registers.write-u8 CAM_REG_WHITEBALANCE_MODE_CONTROL mode // set Light Mode
+    write-reg CAM_REG_WHITEBALANCE_MODE_CONTROL mode
  
-  set-auto-white-balance val/int:
+  set-auto-white-balance val/int -> none:
     symbol := 0
     if val: symbol |= 0x80
-    symbol |= SET_WHITEBALANCE;
-    registers.write-u8 CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol    // white balance control
+    symbol |= SET_WHITEBALANCE
+    write-reg CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol
  
   set-auto-iso-sensitive val/int -> none:
     symbol := 0
     if val: symbol |= 0x80
-    symbol |= SET_GAIN;
-    registers.write-u8 CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol    // auto gain control
+    symbol |= SET_GAIN
+    write-reg CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol
  
-  camera-set-iso-sensitivity iso_sense/int -> none:
-    if (camera-id == SENSOR_3MP_1):
-        iso_sense = OV3640-GAIN-VALUE[iso_sense - 1];
-    registers.write-u8 CAM_REG_MANUAL_GAIN_BIT_9_8 (iso_sense >> 8) // set AGC VALUE
-    registers.write-u8 CAM_REG_MANUAL_GAIN_BIT_7_0 (iso_sense & 0xff)
+  set-iso-sensitivity iso-sense/int -> none:
+    iso-val := iso-sense
+    if camera-info and camera-info.camera-id == "3MP":
+      if iso-sense >= 1 and iso-sense <= OV3640-GAIN-VALUE.size:
+        iso-val = OV3640-GAIN-VALUE[iso-sense - 1]
+    write-reg CAM_REG_MANUAL_GAIN_BIT_9_8 (iso-val >> 8)
+    write-reg CAM_REG_MANUAL_GAIN_BIT_7_0 (iso-val & 0xff)
  
-  camera-set-auto-exposure val/bool -> none:
+  set-auto-exposure val/bool -> none:
     symbol := 0
     if val: symbol |= 0x80
-    symbol |= SET_EXPOSURE;
-    registers.write-u8 CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol    // auto EXPOSURE control
+    symbol |= SET_EXPOSURE
+    write-reg CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol
  
-  camera-set-absolute-exposure exposure_time/int -> none:
-     // set exposure output [19:16]
-    registers.write-u8 CAM_REG_MANUAL_EXPOSURE_BIT_19_16 ((exposure_time >> 16) & 0xff)
-    // set exposure output [15:8]
-    registers.write-u8 CAM_REG_MANUAL_EXPOSURE_BIT_15_8 ((exposure_time >> 8) & 0xff)
-    // set exposure output [7:0]
-    registers.write-u8 CAM_REG_MANUAL_EXPOSURE_BIT_7_0  (exposure_time & 0xff)
+  set-absolute-exposure exposure-time/int -> none:
+    write-reg CAM_REG_MANUAL_EXPOSURE_BIT_19_16 ((exposure-time >> 16) & 0xff)
+    write-reg CAM_REG_MANUAL_EXPOSURE_BIT_15_8 ((exposure-time >> 8) & 0xff)
+    write-reg CAM_REG_MANUAL_EXPOSURE_BIT_7_0 (exposure-time & 0xff)
 
  
   set-color-effect effect/int -> none:
-    registers.write-u8 CAM_REG_COLOR_EFFECT_CONTROL effect // set effect
+    write-reg CAM_REG_COLOR_EFFECT_CONTROL effect
     wait-idle
 
-  camera-set-saturation level/int -> none:
-    registers.write-u8 CAM_REG_SATURATION_CONTROL level // set Saturation Level
+  set-saturation level/int -> none:
+    write-reg CAM_REG_SATURATION_CONTROL level
     
-  camera-set-ev level/int -> none:
-    registers.write-u8 CAM_REG_EV_CONTROL level // set Exposure  Compensation Level
+  set-ev level/int -> none:
+    write-reg CAM_REG_EV_CONTROL level
 
-  camera-set-contrast level/int -> none:
-    registers.write-u8 CAM_REG_CONTRAST_CONTROL level // set Contrast Level
+  set-contrast level/int -> none:
+    write-reg CAM_REG_CONTRAST_CONTROL level
  
   set-sharpness level/int -> none:
-    registers.write-u8 CAM_REG_SHARPNESS_CONTROL level // set Brightness Level
+    write-reg CAM_REG_SHARPNESS_CONTROL level
  
   set-brightness level/int -> none:
-    registers.write-u8 CAM_REG_BRIGHTNESS_CONTROL level // set Brightness Level
+    write-reg CAM_REG_BRIGHTNESS_CONTROL level
  
   flush-fifo -> none:
-    registers.write-u8 ARDUCHIP_FIFO_2 FIFO_CLEAR_MASK
+    write-reg ARDUCHIP_FIFO_2 FIFO_CLEAR_MASK
 
   start-capture -> none:
-    registers.write-u8 ARDUCHIP_FIFO_2 FIFO_START_MASK
+    write-reg ARDUCHIP_FIFO_2 FIFO_START_MASK
  
   clear-fifo-flag -> none:
-    registers.write-u8 ARDUCHIP_FIFO_2 FIFO_CLEAR_ID_MASK
+    write-reg ARDUCHIP_FIFO_2 FIFO_CLEAR_ID_MASK
 
 /** 
 Helper methods
 */
 
   wait-idle -> none:
-    while ((registers.read-u8 CAM_REG_SENSOR_STATE) & 0X03) != CAM_REG_SENSOR_STATE_IDLE:
+    while (read-reg CAM_REG_SENSOR_STATE & 0x03) != CAM_REG_SENSOR_STATE_IDLE:
       sleep --ms=2
 
   readFifoLength(ArducamCamera* camera)
@@ -663,3 +673,61 @@ Helper methods
  
  
  
+  // ArduCam-specific SPI register write protocol
+  write-reg addr/int val/int -> none:
+    camera.write #[addr | 0x80, val]
+    sleep --ms=1
+ 
+  // ArduCam-specific SPI register read protocol  
+  read-reg addr/int -> int:
+    camera.write #[addr & 0x7F, 0x00]
+    data := camera.read 1
+    return data[0]
+  wait-idle -> none:
+    while (read-reg CAM_REG_SENSOR_STATE & 0x03) != CAM_REG_SENSOR_STATE_IDLE:
+      sleep --ms=2
+
+  read-fifo-length -> int:
+    len1 := read-reg FIFO_SIZE1
+    len2 := read-reg FIFO_SIZE2
+    len3 := read-reg FIFO_SIZE3
+    length := ((len3 << 16) | (len2 << 8) | len1) & 0xffffff
+    return length
+ 
+  get-bit addr/int bit/int -> int:
+    temp := read-reg addr
+    return temp & bit
+  set-fifo-burst -> none:
+    camera.write #[BURST_FIFO_READ]
+ 
+  read-byte -> int:
+    if received-length <= 0: return 0
+    camera.write #[SINGLE_FIFO_READ, 0x00]
+    data := camera.read 1
+    received-length -= 1
+    return data[0]
+ 
+  read-buffer length/int -> ByteArray:
+    if image-available == 0 or length == 0: return #[]
+    
+    actual-length := length
+    if received-length < length:
+      actual-length = received-length
+    
+    camera.write #[BURST_FIFO_READ]
+    if not burst-first-flag:
+      burst-first-flag = true
+      camera.write #[0x00]
+    
+    buffer := camera.read actual-length
+    received-length -= actual-length
+    return buffer
+
+  heart-beat -> bool:
+    return (read-reg CAM_REG_SENSOR_STATE & 0x03) == CAM_REG_SENSOR_STATE_IDLE
+
+  low-power-on -> none:
+    write-reg CAM_REG_POWER_CONTROL 0x07
+ 
+  low-power-off -> none:
+    write-reg CAM_REG_POWER_CONTROL 0x05
