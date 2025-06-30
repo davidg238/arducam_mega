@@ -308,8 +308,8 @@ class ArducamCamera:
   ver-date-and-number /List := [1970, 1, 1, 0]          /**< Version information of the camera module */
 
   constructor --.spi-bus/spi.Bus --.cs/gpio.Pin:
-    // Try different SPI modes - ArduCam typically uses mode 0
-    camera = spi-bus.device --cs=cs --frequency=4_000_000 --mode=0  // Lower frequency, explicit mode 0
+    // Try very conservative settings for maximum compatibility
+    camera = spi-bus.device --cs=cs --frequency=1_000_000 --mode=0  // Very slow 1MHz, mode 0
     camera-id = ""
     current-pixel-format = CAM_IMAGE_PIX_FMT_NONE
     current-picture-mode = CAM_IMAGE_MODE_NONE
@@ -317,17 +317,26 @@ class ArducamCamera:
   on -> none:
     print "Camera init"
     
-    // Try a test write/read first to verify communication
+    // Comprehensive SPI communication test
     print "Testing SPI communication..."
+    
+    // Test basic connectivity by reading some registers without writing first
+    raw1 := read-reg 0x00
+    raw2 := read-reg 0x01
+    raw3 := read-reg 0x02
+    print "Raw register reads: 0x00=0x$(raw1.stringify 16), 0x01=0x$(raw2.stringify 16), 0x02=0x$(raw3.stringify 16)"
+    
+    // Test write/read cycle
     write-reg ARDUCHIP_TEST1 0x55  // Write test pattern
-    sleep --ms=10
+    sleep --ms=20  // Longer delay
     test-result := read-reg ARDUCHIP_TEST1
     print "SPI test: wrote 0x55, read back 0x$(test-result.stringify 16)"
     
-    // Try reading some other registers to see the pattern
-    test2 := read-reg 0x02
-    test3 := read-reg 0x03
-    print "Additional reads: 0x02=0x$(test2.stringify 16), 0x03=0x$(test3.stringify 16)"
+    // Try different test patterns
+    write-reg ARDUCHIP_TEST1 0xAA
+    sleep --ms=20
+    test2 := read-reg ARDUCHIP_TEST1
+    print "SPI test 2: wrote 0xAA, read back 0x$(test2.stringify 16)"
     
     // Reset CPLD and camera
     write-reg CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
@@ -506,24 +515,19 @@ Helper methods
  
   // ArduCam-specific SPI register write protocol
   write-reg addr/int val/int -> none:
-    buffer := ByteArray 2
-    buffer[0] = addr | 0x80  // Write address (bit 7 = 1)
-    buffer[1] = val
-    sleep --ms=1
-    camera.transfer buffer
-    sleep --ms=2  // Longer delay for reliability
+    sleep --ms=5  // Longer delay
+    camera.write #[addr | 0x80, val]
+    sleep --ms=5  // Much longer delay
  
   // ArduCam-specific SPI register read protocol  
   read-reg addr/int -> int:
-    // Use transfer for atomic read operation
-    buffer := ByteArray 3
-    buffer[0] = addr & 0x7F  // Read address (bit 7 = 0)
-    buffer[1] = 0x00         // Dummy byte  
-    buffer[2] = 0x00         // Will contain response
-    sleep --ms=1
-    camera.transfer buffer
-    sleep --ms=1
-    return buffer[2]  // Response is in third byte
+    // Try the absolute simplest approach
+    sleep --ms=5  // Longer delay
+    camera.write #[addr & 0x7F]  // Just send address
+    sleep --ms=5  
+    data := camera.read 1  // Read response
+    sleep --ms=5
+    return data[0]
   wait-idle -> none:
     while (read-reg CAM_REG_SENSOR_STATE & 0x03) != CAM_REG_SENSOR_STATE_IDLE:
       sleep --ms=2
