@@ -326,6 +326,9 @@ class ArducamCamera:
     raw3 := read-reg 0x02
     print "Raw register reads: 0x00=0x$(raw1.stringify 16), 0x01=0x$(raw2.stringify 16), 0x02=0x$(raw3.stringify 16)"
     
+    // Test different SPI modes and timing
+    test-spi-modes
+    
     // Test write/read cycle
     write-reg ARDUCHIP_TEST1 0x55  // Write test pattern
     sleep --ms=20  // Longer delay
@@ -337,6 +340,14 @@ class ArducamCamera:
     sleep --ms=20
     test2 := read-reg ARDUCHIP_TEST1
     print "SPI test 2: wrote 0xAA, read back 0x$(test2.stringify 16)"
+    
+    // One more diagnostic - try to identify what kind of device this is
+    print "\n  Device identification attempt..."
+    device-id1 := read-reg 0x0A  // Common device ID locations
+    device-id2 := read-reg 0x0B
+    device-id3 := read-reg 0x1C
+    device-id4 := read-reg 0x1D
+    print "  Possible device IDs: 0x0A=0x$(device-id1.stringify 16), 0x0B=0x$(device-id2.stringify 16), 0x1C=0x$(device-id3.stringify 16), 0x1D=0x$(device-id4.stringify 16)"
     
     // Reset CPLD and camera
     write-reg CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
@@ -595,3 +606,24 @@ Helper methods
     else:
       print "    ✅ Got varied responses - possible device detected"
       return true
+  // Test different SPI modes to see if we get better communication
+  test-spi-modes -> none:
+    print "  Testing different SPI modes..."
+    
+    // Test current mode
+    current-result := read-reg 0x40
+    print "    Current mode (0): reg 0x40 = 0x$(current-result.stringify 16)"
+    
+    // We can't easily change SPI mode mid-stream, but we can try different timing
+    
+    // Try reading with different delays
+    camera.write #[0x40 & 0x7F, 0x00]
+    sleep --ms=10  // Much longer delay
+    delayed-result := camera.read 2
+    print "    With 10ms delay: got 0x$(delayed-result[0].stringify 16), 0x$(delayed-result[1].stringify 16)"
+    
+    // Try reading a known register that should have predictable value
+    camera.write #[0x00 & 0x7F, 0x00]  // Test register
+    sleep --ms=1
+    test-reg := camera.read 2
+    print "    Test register 0x00: got 0x$(test-reg[0].stringify 16), 0x$(test-reg[1].stringify 16)"

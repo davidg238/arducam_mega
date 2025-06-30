@@ -102,3 +102,12 @@ main:
   
   print "\n--- Test Complete ---"
   print "ArduCam test finished. Check output above for any issues."
+  
+  if camera and (camera.ver-date-and-number[0] == 255 or camera.ver-date-and-number[0] == 0):
+    print "\n⚠️  Note: Device found on CS pin 22 but not responding like a standard ArduCam."
+    print "Possible issues:"
+    print "  1. Different ArduCam model requiring different protocol"
+    print "  2. Wrong device type (not an ArduCam)"
+    print "  3. ArduCam in wrong mode or not fully initialized"
+    print "  4. Check ArduCam model number and compare with supported types"
+    print "\nTry checking physical device markings for model identification."
