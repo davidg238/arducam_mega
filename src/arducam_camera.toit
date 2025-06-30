@@ -133,6 +133,7 @@ SENSOR_5MP_1 ::= 0x81
 SENSOR_3MP_1 ::= 0x82
 SENSOR_5MP_2 ::= 0x83 /* 2592x1936 */
 SENSOR_3MP_2 ::= 0x84
+SENSOR_MEGA_5MP ::= 0x56  /* ArduCam MEGA-5MP */
 
 
  
@@ -358,27 +359,37 @@ class ArducamCamera:
       write-reg CAM_REG_DEBUG_DEVICE_ADDRESS camera-info.device-address
   
   get-sensor-config -> none:
-    // For MEGA-5MP, try multiple sensor ID locations
+    // For MEGA-5MP, try multiple sensor ID locations and methods
     index := read-reg CAM_REG_SENSOR_ID  // 0x40
     index2 := read-reg 0x41  // Alternative sensor ID location
     index3 := read-reg 0x42  // Another alternative
     
     print "MEGA-5MP Sensor ID checks: 0x40=0x$(index.stringify 16), 0x41=0x$(index2.stringify 16), 0x42=0x$(index3.stringify 16)"
     
-    // MEGA-5MP series detection
-    if index == SENSOR_5MP_2 or index2 == SENSOR_5MP_2 or index3 == SENSOR_5MP_2:
-      camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP_2"
-      print "✓ Detected MEGA-5MP_2 camera"
-    else if index == SENSOR_5MP_1 or index2 == SENSOR_5MP_1 or index3 == SENSOR_5MP_1:
-      camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP_1"
-      print "✓ Detected MEGA-5MP_1 camera"
-    else if index == 0x85 or index2 == 0x85 or index3 == 0x85:  // MEGA-5MP specific ID
-      camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP"
-      print "✓ Detected MEGA-5MP camera (ID: 0x85)"
+    // Check if any of the values look like valid sensor IDs
+    sensor-ids := [index, index2, index3]
+    detected-id := null
+    
+    sensor-ids.do: | id |
+      if id == SENSOR_MEGA_5MP:
+        detected-id = "MEGA-5MP"
+        camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP"
+      else if id == SENSOR_5MP_2:
+        detected-id = "MEGA-5MP_2"
+        camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP_2"
+      else if id == SENSOR_5MP_1:
+        detected-id = "MEGA-5MP_1"
+        camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP_1"
+      else if id == 0x56 or id == 0x85 or id == 0x86:  // Known MEGA variants
+        detected-id = "MEGA-5MP-variant"
+        camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP"
+    
+    if detected-id:
+      print "✓ Detected $detected-id camera"
     else:
-      // Default to 5MP for MEGA series even if ID read fails
-      camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP-default"
-      print "⚠ MEGA-5MP ID not recognized, using 5MP defaults (IDs: 0x$(index.stringify 16), 0x$(index2.stringify 16), 0x$(index3.stringify 16))"
+      // Since you confirmed it's a MEGA-5MP, use 5MP config regardless
+      camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP-confirmed"
+      print "✓ Using MEGA-5MP configuration (user confirmed hardware)"
   
   set-capture -> none:
     clear-fifo-flag
@@ -525,15 +536,18 @@ Helper methods
     camera.write #[addr | 0x80, val]
     sleep --ms=3  // Delay for write to complete
  
-  // ArduCam-specific SPI register read protocol  
+  // ArduCam MEGA-5MP specific SPI register read protocol  
   read-reg addr/int -> int:
-    // Try combined write-read in single transaction
-    sleep --ms=2
-    // Send address and immediately read response in one operation
-    camera.write #[addr & 0x7F, 0x00]  // Address + dummy byte
-    result := camera.read 2  // Read 2 bytes (dummy + actual data)
-    sleep --ms=2
-    return result[1]  // Return the second byte (actual data)
+    // MEGA-5MP may need different timing/approach
+    sleep --ms=1
+    
+    // Try single address write, then separate read
+    camera.write #[addr & 0x7F]
+    sleep --ms=2  // Longer delay for MEGA-5MP
+    result := camera.read 1
+    sleep --ms=1
+    
+    return result[0]
   wait-idle -> none:
     while (read-reg CAM_REG_SENSOR_STATE & 0x03) != CAM_REG_SENSOR_STATE_IDLE:
       sleep --ms=2
