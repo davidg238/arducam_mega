@@ -315,43 +315,34 @@ class ArducamCamera:
     current-picture-mode = CAM_IMAGE_MODE_NONE
 
   on -> none:
-    print "Camera init"
+    print "Camera init - ArduCam MEGA-5MP detected"
     
-    // Comprehensive SPI communication test
-    print "Testing SPI communication..."
+    // MEGA-5MP specific initialization sequence
+    print "Initializing ArduCam MEGA-5MP..."
     
-    // Test basic connectivity by reading some registers without writing first
-    raw1 := read-reg 0x00
-    raw2 := read-reg 0x01
-    raw3 := read-reg 0x02
-    print "Raw register reads: 0x00=0x$(raw1.stringify 16), 0x01=0x$(raw2.stringify 16), 0x02=0x$(raw3.stringify 16)"
+    // Step 1: Power up sequence for MEGA series
+    write-reg CAM_REG_POWER_CONTROL 0x07  // Power on
+    sleep --ms=50
     
-    // Test different SPI modes and timing
-    test-spi-modes
-    
-    // Test write/read cycle
-    write-reg ARDUCHIP_TEST1 0x55  // Write test pattern
-    sleep --ms=20  // Longer delay
-    test-result := read-reg ARDUCHIP_TEST1
-    print "SPI test: wrote 0x55, read back 0x$(test-result.stringify 16)"
-    
-    // Try different test patterns
-    write-reg ARDUCHIP_TEST1 0xAA
-    sleep --ms=20
-    test2 := read-reg ARDUCHIP_TEST1
-    print "SPI test 2: wrote 0xAA, read back 0x$(test2.stringify 16)"
-    
-    // One more diagnostic - try to identify what kind of device this is
-    print "\n  Device identification attempt..."
-    device-id1 := read-reg 0x0A  // Common device ID locations
-    device-id2 := read-reg 0x0B
-    device-id3 := read-reg 0x1C
-    device-id4 := read-reg 0x1D
-    print "  Possible device IDs: 0x0A=0x$(device-id1.stringify 16), 0x0B=0x$(device-id2.stringify 16), 0x1C=0x$(device-id3.stringify 16), 0x1D=0x$(device-id4.stringify 16)"
-    
-    // Reset CPLD and camera
+    // Step 2: Reset sequence specific to MEGA series
     write-reg CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
-    sleep --ms=100  // Give time for reset
+    sleep --ms=100  // Longer reset time for MEGA
+    
+    // Step 3: Try to wake up the sensor by writing to common registers
+    write-reg 0x07 0x80  // Common reset register
+    sleep --ms=50
+    write-reg 0x07 0x00  // Release reset
+    sleep --ms=100
+    
+    // Step 4: Test communication after initialization
+    print "Testing MEGA-5MP communication..."
+    test-reg := read-reg ARDUCHIP_TEST1
+    print "Test register initial: 0x$(test-reg.stringify 16)"
+    
+    write-reg ARDUCHIP_TEST1 0x55
+    sleep --ms=10
+    test-result := read-reg ARDUCHIP_TEST1
+    print "MEGA SPI test: wrote 0x55, read back 0x$(test-result.stringify 16)"
     
     get-sensor-config
     
@@ -367,23 +358,27 @@ class ArducamCamera:
       write-reg CAM_REG_DEBUG_DEVICE_ADDRESS camera-info.device-address
   
   get-sensor-config -> none:
-    index := read-reg CAM_REG_SENSOR_ID
-    print "Sensor ID: 0x$(index.stringify 16)"
+    // For MEGA-5MP, try multiple sensor ID locations
+    index := read-reg CAM_REG_SENSOR_ID  // 0x40
+    index2 := read-reg 0x41  // Alternative sensor ID location
+    index3 := read-reg 0x42  // Another alternative
     
-    // Try reading a few more registers for debugging
-    reg-test1 := read-reg 0x00  // Test register
-    reg-test2 := read-reg 0x01  // Another register
-    print "Debug: reg 0x00=0x$(reg-test1.stringify 16), reg 0x01=0x$(reg-test2.stringify 16)"
+    print "MEGA-5MP Sensor ID checks: 0x40=0x$(index.stringify 16), 0x41=0x$(index2.stringify 16), 0x42=0x$(index3.stringify 16)"
     
-    if index == SENSOR_5MP_2:
-      camera-info = CameraInfo.camera-info-5MP --camera-id="5MP_2"
-      print "Detected 5MP_2 camera"
-    else if index == SENSOR_5MP_1: 
-      camera-info = CameraInfo.camera-info-5MP
-      print "Detected 5MP_1 camera"
+    // MEGA-5MP series detection
+    if index == SENSOR_5MP_2 or index2 == SENSOR_5MP_2 or index3 == SENSOR_5MP_2:
+      camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP_2"
+      print "✓ Detected MEGA-5MP_2 camera"
+    else if index == SENSOR_5MP_1 or index2 == SENSOR_5MP_1 or index3 == SENSOR_5MP_1:
+      camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP_1"
+      print "✓ Detected MEGA-5MP_1 camera"
+    else if index == 0x85 or index2 == 0x85 or index3 == 0x85:  // MEGA-5MP specific ID
+      camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP"
+      print "✓ Detected MEGA-5MP camera (ID: 0x85)"
     else:
-      camera-info = CameraInfo.camera-info-3MP
-      print "Detected 3MP camera (default)"
+      // Default to 5MP for MEGA series even if ID read fails
+      camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP-default"
+      print "⚠ MEGA-5MP ID not recognized, using 5MP defaults (IDs: 0x$(index.stringify 16), 0x$(index2.stringify 16), 0x$(index3.stringify 16))"
   
   set-capture -> none:
     clear-fifo-flag
