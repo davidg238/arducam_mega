@@ -308,7 +308,8 @@ class ArducamCamera:
   ver-date-and-number /List := [1970, 1, 1, 0]          /**< Version information of the camera module */
 
   constructor --.spi-bus/spi.Bus --.cs/gpio.Pin:
-    camera = spi-bus.device --cs=cs --frequency=8_000_000  // Use 8MHz for better compatibility
+    // Try different SPI modes - ArduCam typically uses mode 0
+    camera = spi-bus.device --cs=cs --frequency=4_000_000 --mode=0  // Lower frequency, explicit mode 0
     camera-id = ""
     current-pixel-format = CAM_IMAGE_PIX_FMT_NONE
     current-picture-mode = CAM_IMAGE_MODE_NONE
@@ -505,16 +506,17 @@ Helper methods
  
   // ArduCam-specific SPI register write protocol
   write-reg addr/int val/int -> none:
+    sleep --ms=1
     camera.write #[addr | 0x80, val]
-    sleep --ms=2  // Slightly longer delay for reliability
+    sleep --ms=2  // Longer delay for reliability
  
   // ArduCam-specific SPI register read protocol  
   read-reg addr/int -> int:
-    // Try simpler approach: write address, then read response
-    camera.write #[addr & 0x7F, 0x00]
-    sleep --ms=1  // Small delay for camera to prepare response
-    data := camera.read 1
-    return data[0]
+    // Try 3-byte transaction with longer delays
+    sleep --ms=1
+    result := camera.write-read #[addr & 0x7F, 0x00, 0x00]
+    sleep --ms=1
+    return result[2]  // Data should be in third byte
   wait-idle -> none:
     while (read-reg CAM_REG_SENSOR_STATE & 0x03) != CAM_REG_SENSOR_STATE_IDLE:
       sleep --ms=2
