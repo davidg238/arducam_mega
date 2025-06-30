@@ -16,7 +16,7 @@ main:
 
   // Common ArduCam CS pins to try
   camera-cs-pins := [
-    gpio.Pin 15,  // Common choice
+    gpio.Pin 22,  // Common choice
     gpio.Pin 5,   // Alternative
     gpio.Pin 2,   // Alternative
     gpio.Pin 4,   // Alternative
@@ -38,7 +38,6 @@ main:
         camera = test-camera
         successful-pin = pin
         print "✓ ArduCam successfully initialized on CS pin $pin.num"
-        break
       finally: | is-exception exception |
         if is-exception:
           print "✗ Failed on CS pin $pin.num: $exception"
@@ -77,12 +76,11 @@ main:
     
     if available > 0:
       // Read a small sample of the image data
-      sample-size := available.min 100
+      sample-size := min available 100
       sample-data := camera.read-buffer sample-size
       print "First $sample-size bytes of image data:"
-      sample-data.do --with-index: | byte index |
-        if index < 20:  // Show first 20 bytes
-          print "  [$index]: 0x$(byte.stringify 16 --pad-to=2)"
+      for i:=0; i < 20; i++:
+        print "  [$i]: 0x$(%x sample-data[i])"  // Show first 20 bytes
       
       // Check if it looks like JPEG data (should start with 0xFF 0xD8)
       if sample-data.size >= 2 and sample-data[0] == 0xFF and sample-data[1] == 0xD8:

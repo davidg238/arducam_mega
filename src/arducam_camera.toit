@@ -412,13 +412,13 @@ class ArducamCamera:
  
   set-auto-white-balance val/int -> none:
     symbol := 0
-    if val: symbol |= 0x80
+    if val > 0: symbol |= 0x80
     symbol |= SET_WHITEBALANCE
     write-reg CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol
  
   set-auto-iso-sensitive val/int -> none:
     symbol := 0
-    if val: symbol |= 0x80
+    if val > 0: symbol |= 0x80
     symbol |= SET_GAIN
     write-reg CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol
  
@@ -473,18 +473,6 @@ class ArducamCamera:
 /** 
 Helper methods
 */
-
-  wait-idle -> none:
-    while (read-reg CAM_REG_SENSOR_STATE & 0x03) != CAM_REG_SENSOR_STATE_IDLE:
-      sleep --ms=2
-
-  readFifoLength camera/ArducamCamera -> int:
-
-    len1   := readReg camera FIFO_SIZE1
-    len2   := readReg camera FIFO_SIZE2
-    len3   := readReg camera FIFO_SIZE3
-    length := ((len3 << 16) | (len2 << 8) | len1) & 0xffffff;
-    return length;
 
  
   // ArduCam-specific SPI register write protocol
