@@ -317,10 +317,16 @@ class ArducamCamera:
     print "Camera init"
     
     // Try a test write/read first to verify communication
+    print "Testing SPI communication..."
     write-reg ARDUCHIP_TEST1 0x55  // Write test pattern
     sleep --ms=10
     test-result := read-reg ARDUCHIP_TEST1
     print "SPI test: wrote 0x55, read back 0x$(test-result.stringify 16)"
+    
+    // Try reading some other registers to see the pattern
+    test2 := read-reg 0x02
+    test3 := read-reg 0x03
+    print "Additional reads: 0x02=0x$(test2.stringify 16), 0x03=0x$(test3.stringify 16)"
     
     // Reset CPLD and camera
     write-reg CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
@@ -361,10 +367,20 @@ class ArducamCamera:
   set-capture -> none:
     clear-fifo-flag
     start-capture
-    while (get-bit ARDUCHIP_TRIG CAP_DONE_MASK) == 0:
+    
+    // Add timeout to prevent hanging
+    timeout := 100  // 200ms timeout
+    while (get-bit ARDUCHIP_TRIG CAP_DONE_MASK) == 0 and timeout > 0:
       sleep --ms=2
-    received-length = read-fifo-length
-    total-length = received-length
+      timeout--
+    
+    if timeout == 0:
+      print "Warning: Capture timeout - camera may not be responding properly"
+      received-length = 0
+      total-length = 0
+    else:
+      received-length = read-fifo-length
+      total-length = received-length
     burst-first-flag = false
 
   image-available -> int:
@@ -489,21 +505,16 @@ Helper methods
  
   // ArduCam-specific SPI register write protocol
   write-reg addr/int val/int -> none:
-    buffer := ByteArray 2
-    buffer[0] = addr | 0x80
-    buffer[1] = val
-    camera.transfer buffer
+    camera.write #[addr | 0x80, val]
     sleep --ms=2  // Slightly longer delay for reliability
  
   // ArduCam-specific SPI register read protocol  
   read-reg addr/int -> int:
-    // ArduCam protocol: send address, then read response with dummy byte
-    buffer := ByteArray 3
-    buffer[0] = addr & 0x7F
-    buffer[1] = 0x00  // Dummy byte
-    buffer[2] = 0x00  // Will be filled with response
-    camera.transfer buffer
-    return buffer[2]  // Data comes in the third byte
+    // Try simpler approach: write address, then read response
+    camera.write #[addr & 0x7F, 0x00]
+    sleep --ms=1  // Small delay for camera to prepare response
+    data := camera.read 1
+    return data[0]
   wait-idle -> none:
     while (read-reg CAM_REG_SENSOR_STATE & 0x03) != CAM_REG_SENSOR_STATE_IDLE:
       sleep --ms=2
