@@ -19,7 +19,7 @@ main:
       --cs=gpio.Pin 5
 
   // Try a few common CS pins for ArduCam
-  camera-cs-pins := [gpio.Pin 15, gpio.Pin 2, gpio.Pin 4, gpio.Pin 16]
+  camera-cs-pins := [gpio.Pin 22, gpio.Pin 2, gpio.Pin 4, gpio.Pin 16]
   
   camera := null
   

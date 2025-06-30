@@ -13,6 +13,22 @@ A Toit library for ArduCam Mega cameras, supporting 3MP and 5MP modules.
 
 ## Hardware Setup
 
+
+There is an [ArduCam Mega-5MP](https://docs.arducam.com/Arduino-SPI-camera/MEGA-SPI/MEGA-Quick-Start-Guide/#hardware-connection) SPI camera and SD card reader hooked to the www.EzSBC.com ESP32 board as follows:
+
+
+| Description   | EzSBC ESP32 | Micro-SD board  | Mega camera |
+| --            | --          | --              | --          |
+| miso          | 19          | DO              | MISO        |
+| mosi          | 23          | DI              | MOSI        |
+| clk           | 18          | CLK             | SCK         |
+| cs/sd-card    | 5           | CS              |             |  
+| cs/camera     | 22          |                 | CS          |
+| 5v            | Vin         | 5v              |             |  
+| 3.3v          | 3.3         |                 | VCC         |  
+| gnd           | Gnd         | GND             | GND         |  
+| not connected |             | CD, 3v          |             |  
+
 ### ESP32 Connections
 
 Connect your ArduCam to the ESP32 using SPI:

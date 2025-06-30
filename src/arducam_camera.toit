@@ -317,7 +317,6 @@ class ArducamCamera:
   cs  /gpio.Pin                                      /**< CS pin */
   spi-bus / spi.Bus
   camera /spi.Device
-  registers /spi.Registers
 
   camera-id /string?                               /**< Model of camera module */
 
@@ -541,15 +540,13 @@ Helper methods
     while (read-reg CAM_REG_SENSOR_STATE & 0x03) != CAM_REG_SENSOR_STATE_IDLE:
       sleep --ms=2
 
-  readFifoLength(ArducamCamera* camera)
- {
-     uint32_t len1, len2, len3, length = 0;
-     len1   = readReg(camera, FIFO_SIZE1);
-     len2   = readReg(camera, FIFO_SIZE2);
-     len3   = readReg(camera, FIFO_SIZE3);
-     length = ((len3 << 16) | (len2 << 8) | len1) & 0xffffff;
-     return length;
- }
+  readFifoLength camera/ArducamCamera -> int:
+
+    len1   := readReg camera FIFO_SIZE1
+    len2   := readReg camera FIFO_SIZE2
+    len3   := readReg camera FIFO_SIZE3
+    length := ((len3 << 16) | (len2 << 8) | len1) & 0xffffff;
+    return length;
  
  uint8_t cameraGetBit(ArducamCamera* camera, uint8_t addr, uint8_t bit)
  {
