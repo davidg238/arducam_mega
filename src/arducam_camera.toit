@@ -315,6 +315,13 @@ class ArducamCamera:
 
   on -> none:
     print "Camera init"
+    
+    // Try a test write/read first to verify communication
+    write-reg ARDUCHIP_TEST1 0x55  // Write test pattern
+    sleep --ms=10
+    test-result := read-reg ARDUCHIP_TEST1
+    print "SPI test: wrote 0x55, read back 0x$(test-result.stringify 16)"
+    
     // Reset CPLD and camera
     write-reg CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
     sleep --ms=100  // Give time for reset
