@@ -576,3 +576,22 @@ Helper methods
  
   low-power-off -> none:
     write-reg CAM_REG_POWER_CONTROL 0x05
+  // Quick SPI test method - don't call full on() method
+  test-spi-basic -> bool:
+    // Try a few basic register reads to see if we get any response
+    test1 := read-reg 0x00
+    test2 := read-reg 0x01  
+    test3 := read-reg 0x40  // Sensor ID register
+    
+    print "    Basic SPI test: 0x00=0x$(test1.stringify 16), 0x01=0x$(test2.stringify 16), 0x40=0x$(test3.stringify 16)"
+    
+    // If we get varied responses (not all 0xFF or all 0x00), SPI might be working
+    responses := [test1, test2, test3]
+    all-same := responses.every: responses[0] == it
+    
+    if all-same and (test1 == 0xFF or test1 == 0x00):
+      print "    ❌ All reads return same value (0x$(test1.stringify 16)) - likely no device"
+      return false
+    else:
+      print "    ✅ Got varied responses - possible device detected"
+      return true

@@ -32,15 +32,21 @@ main:
       try:
         print "\nTrying ArduCam on CS pin $pin.num..."
         test-camera := ArducamCamera --spi-bus=bus --cs=pin
-        test-camera.on
         
-        // If we get here, the camera initialized successfully
-        camera = test-camera
-        successful-pin = pin
-        print "✓ ArduCam successfully initialized on CS pin $pin.num"
+        // Test basic SPI first before full initialization
+        if test-camera.test-spi-basic:
+          print "  ✓ Basic SPI test passed - attempting full initialization..."
+          test-camera.on
+          
+          // If we get here, the camera initialized successfully
+          camera = test-camera
+          successful-pin = pin
+          print "  ✓ ArduCam successfully initialized on CS pin $pin.num"
+        else:
+          print "  ✗ Basic SPI test failed - no device on this pin"
       finally: | is-exception exception |
         if is-exception:
-          print "✗ Failed on CS pin $pin.num: $exception"
+          print "  ✗ Failed on CS pin $pin.num: $exception"
   
   if camera == null:
     print "\n❌ Could not initialize ArduCam on any CS pin"
