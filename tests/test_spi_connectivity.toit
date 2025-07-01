@@ -35,7 +35,7 @@ main:
 test-cs-pins bus -> none:
   print "  Testing different CS pins (ArduCam might be on different pin):"
   
-  cs-pins := [22, 21, 5, 15, 16, 17]  // Common ESP32 CS pins
+  cs-pins := [22]  // Common ESP32 CS pins
   
   cs-pins.do: | cs-num |
     try:
@@ -59,7 +59,7 @@ test-spi-parameters bus -> none:
   print "  Testing SPI modes and frequencies on CS 22:"
   
   modes := [0, 1, 2, 3]
-  frequencies := [100_000, 1_000_000, 4_000_000, 8_000_000]
+  frequencies := [1_000_000, 4_000_000, 8_000_000] // [100_000, 1_000_000, 4_000_000, 8_000_000]
   
   modes.do: | mode |
     frequencies.do: | freq |

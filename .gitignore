@@ -1,0 +1,5 @@
+.secrets.toit
+.packages/
+examples/.packages
+tests/.packages
+tests/.jaguar

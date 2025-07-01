@@ -20,35 +20,29 @@ A Toit library for ArduCam Mega cameras, supporting 3MP and 5MP modules.
 
 There is an [ArduCam Mega-5MP](https://docs.arducam.com/Arduino-SPI-camera/MEGA-SPI/MEGA-Quick-Start-Guide/#hardware-connection) SPI camera and SD card reader hooked to the www.EzSBC.com ESP32 board as follows:
 
+### ArduCam MEGA5-MP connections
 
-| Description   | EzSBC ESP32 | Micro-SD board  | Mega camera |
-| --            | --          | --              | --          |
-| miso          | 19          | DO              | MISO        |
-| mosi          | 23          | DI              | MOSI        |
-| clk           | 18          | CLK             | SCK         |
-| cs/sd-card    | 5           | CS              |             |  
-| cs/camera     | 22          |                 | CS          |
-| 5v            | Vin         | 5v              |             |  
-| 3.3v          | 3.3         |                 | VCC         |  
-| gnd           | Gnd         | GND             | GND         |  
-| not connected |             | CD, 3v          |             |  
+| Description   | EzSBC ESP32 |  Mega camera |
+| --            | --          |  --          |
+| miso          | 19          |  MISO        |
+| mosi          | 23          |  MOSI        |
+| clk           | 18          |  SCK         |
+| cs/camera     | 22          |  CS          |
+| 3.3v          | 3.3         |  VCC         |  
+| gnd           | Gnd         |  GND         |  
 
-### ESP32 Connections
 
-Connect your ArduCam to the ESP32 using SPI:
+### SD Card connections
 
-```
-ArduCam -> ESP32
-------------------------
-VCC     -> 3.3V
-GND     -> GND
-SCK     -> GPIO 18 (SPI Clock)
-MOSI    -> GPIO 23 (SPI MOSI)
-MISO    -> GPIO 19 (SPI MISO)
-CS      -> GPIO 15 (or 5, 2, 4, 16)
-```
-
-**Note:** The CS (Chip Select) pin can vary. The library will automatically try common pins.
+| Description   | EzSBC ESP32 | Micro-SD board  | 
+| --            | --          | --              | 
+| miso          | 19          | DO              | 
+| mosi          | 23          | DI              | 
+| clk           | 18          | CLK             | 
+| cs/sd-card    | 5           | CS              | 
+| 5v            | Vin         | 5v              | 
+| gnd           | Gnd         | GND             | 
+| not connected |             | CD, 3v          | 
 
 ## Usage
 
@@ -67,7 +61,7 @@ main:
 
   camera := ArducamCamera
       --spi-bus=bus
-      --cs=gpio.Pin 15
+      --cs=gpio.Pin 22
 
   camera.on
   

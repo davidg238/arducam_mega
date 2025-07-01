@@ -1,0 +1,6 @@
+dependencies:
+  arducam_mega:
+    path: ..
+  host:
+    url: github.com/toitlang/pkg-host
+    version: ^1.16.2
