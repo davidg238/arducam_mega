@@ -327,6 +327,7 @@ class ArducamCamera:
     
     // Step 2: Reset sequence specific to MEGA series
     write-reg CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
+    wait-idle  // Wait for I2C idle after reset - CRITICAL for MEGA series
     sleep --ms=100  // Longer reset time for MEGA
     
     // Step 3: Try to wake up the sensor by writing to common registers
@@ -347,22 +348,30 @@ class ArducamCamera:
     
     get-sensor-config
     
-    // Read version information
+    // Read version information - with proper I2C idle waits like C code
     ver-date-and-number[0] = read-reg CAM_REG_YEAR_ID & 0x3F       // year
+    wait-idle
     ver-date-and-number[1] = read-reg CAM_REG_MONTH_ID & 0x0F      // month
+    wait-idle
     ver-date-and-number[2] = read-reg CAM_REG_DAY_ID & 0x1F        // day
+    wait-idle
     ver-date-and-number[3] = read-reg CAM_REG_FPGA_VERSION_NUMBER & 0xFF  // version
+    wait-idle
 
     print "Camera date $ver-date-and-number[0] $ver-date-and-number[1] $ver-date-and-number[2] version $ver-date-and-number[3]"
     
     if camera-info:
       write-reg CAM_REG_DEBUG_DEVICE_ADDRESS camera-info.device-address
+      wait-idle
   
   get-sensor-config -> none:
-    // For MEGA-5MP, try multiple sensor ID locations and methods
+    // For MEGA-5MP, try multiple sensor ID locations and methods - with I2C waits
     index := read-reg CAM_REG_SENSOR_ID  // 0x40
+    wait-idle
     index2 := read-reg 0x41  // Alternative sensor ID location
+    wait-idle
     index3 := read-reg 0x42  // Another alternative
+    wait-idle
     
     print "MEGA-5MP Sensor ID checks: 0x40=0x$(index.stringify 16), 0x41=0x$(index2.stringify 16), 0x42=0x$(index3.stringify 16)"
     
@@ -549,8 +558,12 @@ Helper methods
     
     return result[0]
   wait-idle -> none:
-    while (read-reg CAM_REG_SENSOR_STATE & 0x03) != CAM_REG_SENSOR_STATE_IDLE:
+    timeout := 50  // 100ms timeout (50 * 2ms)
+    while (read-reg CAM_REG_SENSOR_STATE & 0x03) != CAM_REG_SENSOR_STATE_IDLE and timeout > 0:
       sleep --ms=2
+      timeout--
+    if timeout == 0:
+      print "Warning: wait-idle timeout - camera may not be responding to I2C"
 
   read-fifo-length -> int:
     len1 := read-reg FIFO_SIZE1
