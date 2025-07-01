@@ -527,24 +527,22 @@ Helper methods
 */
 
  
-  // ArduCam-specific SPI register write protocol
+  // ArduCam-specific SPI register write protocol - FIXED to match C code
   write-reg addr/int val/int -> none:
-    sleep --ms=2
-    camera.write #[addr | 0x80, val]
-    sleep --ms=3  // Delay for write to complete
+    // Match C code exactly: cameraBusWrite sends [address, value]
+    sleep --ms=1
+    camera.write #[addr, val]  // Just address and value, no 0x80 (CS handled by device)
+    sleep --ms=1
  
-  // ArduCam MEGA-5MP specific SPI register read protocol  
+  // ArduCam MEGA-5MP specific SPI register read protocol - FIXED to match C code
   read-reg addr/int -> int:
-    // MEGA-5MP may need different timing/approach
+    // Match C code exactly: cameraBusRead sends [address, 0x00, 0x00] and takes 3rd byte
+    sleep --ms=1
+    camera.write #[addr]  // Send address
+    result := camera.read 2  // Read 2 dummy bytes to get the real response
     sleep --ms=1
     
-    // Try single address write, then separate read
-    camera.write #[addr & 0x7F]
-    sleep --ms=2  // Longer delay for MEGA-5MP
-    result := camera.read 1
-    sleep --ms=1
-    
-    return result[0]
+    return result[1]  // Return the 2nd byte (real data)
   wait-idle -> none:
     timeout := 25  // 50ms timeout (25 * 2ms)
     while timeout > 0:
