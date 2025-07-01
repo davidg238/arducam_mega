@@ -11,6 +11,10 @@ A Toit library for ArduCam Mega cameras, supporting 3MP and 5MP modules.
 - Auto-focus and exposure controls
 - Hardware SPI communication
 
+## Development Setup
+
+`sketch --unsafe-mode --device=/dev/ttyUSB0`
+
 ## Hardware Setup
 
 

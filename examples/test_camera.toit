@@ -17,10 +17,10 @@ main:
   // Common ArduCam CS pins to try
   camera-cs-pins := [
     gpio.Pin 22,  // Common choice
-    gpio.Pin 5,   // Alternative
-    gpio.Pin 2,   // Alternative
-    gpio.Pin 4,   // Alternative
-    gpio.Pin 16   // Alternative
+    // gpio.Pin 5,   // Alternative
+    // gpio.Pin 2,   // Alternative
+    // gpio.Pin 4,   // Alternative
+    // gpio.Pin 16   // Alternative
   ]
   
   camera := null

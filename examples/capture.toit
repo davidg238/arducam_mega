@@ -1,7 +1,8 @@
 // Copyright 2024 Ekorau LLC
 
 import arducam_mega show *
-import host.file
+import host.file show *
+import host.directory show *
 import .sdcard
 
 import spi
@@ -44,7 +45,7 @@ main:
   filename := "hello.txt"
   try:
     filer := sdcard.openr "/sd/$filename"
-    content := filer.read
+    content := filer.in.read
     filer.close
     print "/sd/$filename contents  ---------------------------------------------"
     print content.to-string
@@ -55,8 +56,11 @@ main:
   
   // List SD card contents
   try:
-    files := file.list-directory "/sd"
-    files.do: print it
+    files := DirectoryStream "/sd"
+    names := files.next
+    while names:
+      print names
+      names = files.next
   finally: | is-exception exception |
     if is-exception:
       print "Error listing directory: $exception"
