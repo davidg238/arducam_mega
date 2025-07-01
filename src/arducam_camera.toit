@@ -534,15 +534,26 @@ Helper methods
     camera.write #[addr, val]  // Just address and value, no 0x80 (CS handled by device)
     sleep --ms=1
  
-  // ArduCam MEGA-5MP specific SPI register read protocol - FIXED to match C code
+  // ArduCam MEGA-5MP specific SPI register read protocol - EXACT C REPLICATION
   read-reg addr/int -> int:
-    // Match C code exactly: cameraBusRead sends [address, 0x00, 0x00] and takes 3rd byte
-    sleep --ms=1
-    camera.write #[addr]  // Send address
-    result := camera.read 2  // Read 2 dummy bytes to get the real response
+    // Try exactly what C code does: separate transfers for each byte
     sleep --ms=1
     
-    return result[1]  // Return the 2nd byte (real data)
+    // Step 1: Send address
+    camera.write #[addr & 0x7F]  // Ensure read bit clear
+    dummy1 := camera.read 1
+    
+    // Step 2: Send first dummy, get first response
+    camera.write #[0x00]
+    dummy2 := camera.read 1
+    
+    // Step 3: Send second dummy, get real data
+    camera.write #[0x00]
+    result := camera.read 1
+    
+    sleep --ms=1
+    
+    return result[0]  // This should be the real data
   wait-idle -> none:
     timeout := 25  // 50ms timeout (25 * 2ms)
     while timeout > 0:
