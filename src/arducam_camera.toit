@@ -318,37 +318,22 @@ class ArducamCamera:
   on -> none:
     print "Camera init - ArduCam MEGA-5MP detected"
     
-    // MEGA-5MP specific initialization sequence
+    // Follow exact C code sequence from cameraBegin()
     print "Initializing ArduCam MEGA-5MP..."
     
-    // Step 1: Power up sequence for MEGA series
-    write-reg CAM_REG_POWER_CONTROL 0x07  // Power on
-    sleep --ms=50
-    
-    // Step 2: Reset sequence specific to MEGA series
+    // Step 1: Reset sequence (matches C code exactly)
+    print "Resetting camera..."
     write-reg CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
-    wait-idle  // Wait for I2C idle after reset - CRITICAL for MEGA series
-    sleep --ms=100  // Longer reset time for MEGA
+    wait-idle  // Wait I2c Idle (matches C code)
+    print "Reset complete, reading sensor config..."
     
-    // Step 3: Try to wake up the sensor by writing to common registers
-    write-reg 0x07 0x80  // Common reset register
-    sleep --ms=50
-    write-reg 0x07 0x00  // Release reset
-    sleep --ms=100
-    
-    // Step 4: Test communication after initialization
-    print "Testing MEGA-5MP communication..."
-    test-reg := read-reg ARDUCHIP_TEST1
-    print "Test register initial: 0x$(test-reg.stringify 16)"
-    
-    write-reg ARDUCHIP_TEST1 0x55
-    sleep --ms=10
-    test-result := read-reg ARDUCHIP_TEST1
-    print "MEGA SPI test: wrote 0x55, read back 0x$(test-result.stringify 16)"
-    
+    // Step 2: Get sensor config AFTER reset (matches C code order)
     get-sensor-config
     
-    // Read version information - with proper I2C idle waits like C code
+    // Step 3: Update camera info (matches C code)
+    print "Reading version information..."
+    
+    // Step 4: Read version information with proper I2C idle waits (matches C code exactly)
     ver-date-and-number[0] = read-reg CAM_REG_YEAR_ID & 0x3F       // year
     wait-idle
     ver-date-and-number[1] = read-reg CAM_REG_MONTH_ID & 0x0F      // month
@@ -360,9 +345,12 @@ class ArducamCamera:
 
     print "Camera date $ver-date-and-number[0] $ver-date-and-number[1] $ver-date-and-number[2] version $ver-date-and-number[3]"
     
+    // Step 5: Set debug device address (matches C code)
     if camera-info:
       write-reg CAM_REG_DEBUG_DEVICE_ADDRESS camera-info.device-address
       wait-idle
+      
+    print "Camera initialization complete!"
   
   get-sensor-config -> none:
     // For MEGA-5MP, try multiple sensor ID locations and methods - with I2C waits
@@ -558,12 +546,17 @@ Helper methods
     
     return result[0]
   wait-idle -> none:
-    timeout := 50  // 100ms timeout (50 * 2ms)
-    while (read-reg CAM_REG_SENSOR_STATE & 0x03) != CAM_REG_SENSOR_STATE_IDLE and timeout > 0:
+    timeout := 25  // 50ms timeout (25 * 2ms)
+    while timeout > 0:
+      sensor-state := read-reg CAM_REG_SENSOR_STATE
+      state-bits := sensor-state & 0x03
+      if state-bits == CAM_REG_SENSOR_STATE_IDLE:
+        print "[DEBUG] wait-idle: sensor ready (state=0x$(%02x sensor-state), bits=0x$(%02x state-bits))"
+        return
+      print "[DEBUG] wait-idle: waiting... (state=0x$(%02x sensor-state), bits=0x$(%02x state-bits), timeout=$timeout)"
       sleep --ms=2
       timeout--
-    if timeout == 0:
-      print "Warning: wait-idle timeout - camera may not be responding to I2C"
+    print "[WARNING] wait-idle timeout after 50ms - sensor state never became idle"
 
   read-fifo-length -> int:
     len1 := read-reg FIFO_SIZE1
