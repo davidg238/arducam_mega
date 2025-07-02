@@ -318,22 +318,33 @@ class ArducamCamera:
   on -> none:
     print "Camera init - ArduCam MEGA-5MP detected"
     
-    // Follow exact C code sequence from cameraBegin()
+    // Follow exact Arduino cameraBegin() sequence with I2C tunnel initialization
     print "Initializing ArduCam MEGA-5MP..."
     
-    // Step 1: Reset sequence (matches C code exactly)
+    // Step 1: Reset sequence (matches Arduino exactly)
     print "Resetting camera..."
     write-reg CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
-    wait-idle  // Wait I2c Idle (matches C code)
+    // Note: wait-idle expected to timeout here - this is normal per Arduino code
+    try-wait-idle "after reset"
     print "Reset complete, reading sensor config..."
     
-    // Step 2: Get sensor config AFTER reset (matches C code order)
+    // Step 2: Get sensor config AFTER reset (matches Arduino order)
     get-sensor-config
     
-    // Step 3: Update camera info (matches C code)
-    print "Reading version information..."
+    // Step 3: CRITICAL - Set I2C device address BEFORE reading version info
+    print "Setting up I2C tunnel..."
+    if camera-info:
+      print "  Setting I2C device address: 0x$(%02x camera-info.device-address)"
+      write-reg CAM_REG_DEBUG_DEVICE_ADDRESS camera-info.device-address
+      // This should enable I2C tunnel
+      success := try-wait-idle "after I2C address setup"
+      if success:
+        print "  ✅ I2C tunnel initialized successfully!"
+      else:
+        print "  ❌ I2C tunnel initialization failed"
     
-    // Step 4: Read version information with proper I2C idle waits (matches C code exactly)
+    // Step 4: Read version information with working I2C tunnel
+    print "Reading version information..."
     ver-date-and-number[0] = read-reg CAM_REG_YEAR_ID & 0x3F       // year
     wait-idle
     ver-date-and-number[1] = read-reg CAM_REG_MONTH_ID & 0x0F      // month
@@ -345,10 +356,9 @@ class ArducamCamera:
 
     print "Camera date $ver-date-and-number[0] $ver-date-and-number[1] $ver-date-and-number[2] version $ver-date-and-number[3]"
     
-    // Step 5: Set debug device address (matches C code)
-    if camera-info:
-      write-reg CAM_REG_DEBUG_DEVICE_ADDRESS camera-info.device-address
-      wait-idle
+    // Step 5: Test I2C tunnel with format register
+    print "Testing I2C tunnel functionality..."
+    test-format-register
       
     print "Camera initialization complete!"
   
@@ -417,9 +427,11 @@ class ArducamCamera:
     if current-pixel-format != pixel-format:
       current-pixel-format = pixel-format
       write-reg CAM_REG_FORMAT pixel-format
+      wait-idle  // Wait I2C idle - CRITICAL for JPEG format setting
     if current-picture-mode != mode:
       current-picture-mode = mode
       write-reg CAM_REG_CAPTURE_RESOLUTION (CAM_SET_CAPTURE_MODE | mode)
+      wait-idle  // Wait I2C idle - CRITICAL for resolution setting
     set-capture
  
   take-multi-pictures mode/int pixel-format/int num/int -> none:
@@ -534,26 +546,21 @@ Helper methods
     camera.write #[addr, val]  // Just address and value, no 0x80 (CS handled by device)
     sleep --ms=1
  
-  // ArduCam MEGA-5MP specific SPI register read protocol - EXACT C REPLICATION
+  // ArduCam MEGA-5MP specific SPI register read protocol - EXACT ARDUINO C REPLICATION
   read-reg addr/int -> int:
-    // Try exactly what C code does: separate transfers for each byte
+    // Arduino cameraBusRead: single CS transaction with 3 transfers
+    // arducamSpiCsPinLow -> transfer(address) -> transfer(0x00) -> transfer(0x00) -> arducamSpiCsPinHigh
     sleep --ms=1
     
-    // Step 1: Send address
-    camera.write #[addr & 0x7F]  // Ensure read bit clear
-    dummy1 := camera.read 1
-    
-    // Step 2: Send first dummy, get first response
-    camera.write #[0x00]
-    dummy2 := camera.read 1
-    
-    // Step 3: Send second dummy, get real data
-    camera.write #[0x00]
-    result := camera.read 1
+    // Single SPI transaction: send address + 2 dummy bytes, read 3 responses
+    command := #[addr & 0x7F, 0x00, 0x00]
+    camera.write command
+    responses := camera.read 3
     
     sleep --ms=1
     
-    return result[0]  // This should be the real data
+    // Arduino takes the 3rd byte (index 2) as the real data
+    return responses[2]
   wait-idle -> none:
     timeout := 25  // 50ms timeout (25 * 2ms)
     while timeout > 0:
@@ -566,6 +573,42 @@ Helper methods
       sleep --ms=2
       timeout--
     print "[WARNING] wait-idle timeout after 50ms - sensor state never became idle"
+
+  // Helper method for I2C initialization
+  try-wait-idle context/string -> bool:
+    print "  Waiting for I2C idle ($context)..."
+    timeout := 25
+    while timeout > 0:
+      sensor-state := read-reg CAM_REG_SENSOR_STATE
+      state-bits := sensor-state & 0x03
+      if state-bits == CAM_REG_SENSOR_STATE_IDLE:
+        print "    ✅ I2C idle achieved! (state=0x$(%02x sensor-state))"
+        return true
+      sleep --ms=2
+      timeout--
+    print "    ❌ I2C idle timeout ($context)"
+    return false
+
+  // Test I2C tunnel functionality
+  test-format-register -> none:
+    print "  Testing format register setting via I2C tunnel..."
+    
+    format-before := read-reg CAM_REG_FORMAT
+    print "    Format before: 0x$(%02x format-before)"
+    
+    write-reg CAM_REG_FORMAT CAM_IMAGE_PIX_FMT_JPG
+    i2c-success := try-wait-idle "format register write"
+    
+    if i2c-success:
+      format-after := read-reg CAM_REG_FORMAT
+      print "    Format after: 0x$(%02x format-after)"
+      
+      if format-after == CAM_IMAGE_PIX_FMT_JPG:
+        print "    ✅ I2C tunnel working! Format register set successfully!"
+      else:
+        print "    ⚠️  I2C wait succeeded but format not set (got 0x$(%02x format-after))"
+    else:
+      print "    ❌ I2C tunnel not working for format register"
 
   read-fifo-length -> int:
     len1 := read-reg FIFO_SIZE1
