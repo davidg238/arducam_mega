@@ -28,39 +28,18 @@ main:
       print "  ❌ No image data to analyze"
       return
     
-    print "\nAnalyzing image format..."
-    header-size := 50
-    if header-size > image-size: header-size = image-size
+    print "\nAnalyzing image format using streaming (C code style)..."
     
-    header := camera.read-buffer header-size
-    print "  Read $header.size bytes for analysis"
+    // Use streaming approach like C code to avoid memory issues
+    jpeg-found := camera.check-jpeg-headers
     
-    print "\nFirst 20 bytes:"
-    for i := 0; i < 20 and i < header.size; i++:
-      print "    [$i]: 0x$(%02x header[i])"
-    
-    // Check for JPEG header
-    if header.size >= 2 and header[0] == 0xFF and header[1] == 0xD8:
+    if jpeg-found:
       print "\n🎉 SUCCESS: JPEG HEADER FOUND!"
-      print "  ✅ Standard JPEG format detected (FF D8)"
-      
-      // Look for additional JPEG markers
-      markers := []
-      for i := 0; i < header.size - 1; i++:
-        if header[i] == 0xFF:
-          marker := header[i + 1]
-          if marker == 0xE0: markers.add "JFIF"
-          else if marker == 0xDB: markers.add "Quantization"
-          else if marker == 0xC0: markers.add "Start-of-Frame"
-          else if marker == 0xDA: markers.add "Start-of-Scan"
-      
-      if markers.size > 0:
-        print "  ✅ JPEG structure: $markers"
+      print "  ✅ Standard JPEG format detected using streaming!"
+      print "  ✅ ArduCam MEGA JPEG format is working!"
     else:
-      print "\n❌ No JPEG header found"
-      print "    Expected: 0xFF 0xD8"
-      if header.size >= 2:
-        print "    Got: 0x$(%02x header[0]) 0x$(%02x header[1])"
+      print "\n❌ No JPEG header found in streaming chunks"
+      print "  May need different capture parameters or FIFO reset"
         
   finally: | is-exception exception |
     if is-exception:

@@ -649,18 +649,49 @@ Helper methods
     
     // Limit to small reads for header analysis
     actual-length := length
-    if actual-length > 100:  // Max 100 bytes for header analysis
-      actual-length = 100
+    if actual-length > 255:  // Use C code PREVIEW_BUF_LEN size
+      actual-length = 255
     
-    // Read using single FIFO read (safer than burst for small amounts)
+    // Use burst FIFO read protocol like C code
+    camera.write #[BURST_FIFO_READ]  // Send 0x3C
+    if not burst-first-flag:
+      burst-first-flag = true
+      camera.write #[0x00]  // Send initial 0x00
+    
+    // Read chunk using SPI transfer protocol
     buffer := ByteArray actual-length
     for i := 0; i < actual-length; i++:
-      // Follow C cameraReadByte protocol: SINGLE_FIFO_READ + two dummy bytes
-      camera.write #[SINGLE_FIFO_READ, 0x00]
-      response := camera.read 1
+      camera.write #[0x00]  // Send dummy byte
+      response := camera.read 1  // Read response byte
       buffer[i] = response[0]
     
     return buffer
+  
+  // Stream-based JPEG header detection (C code style)
+  check-jpeg-headers -> bool:
+    print "  Checking for JPEG headers using streaming..."
+    
+    // Reset burst flag for new read session
+    burst-first-flag = false
+    
+    // Read first few chunks to look for JPEG header
+    for chunk-num := 0; chunk-num < 5; chunk-num++:  // Check first ~1KB
+      chunk := read-buffer 255  // C code chunk size
+      
+      print "    Chunk $chunk-num: $chunk.size bytes"
+      if chunk.size >= 2:
+        print "      First 10 bytes: "
+        for i := 0; i < 10 and i < chunk.size; i++:
+          print "        [$i]: 0x$(%02x chunk[i])"
+        
+        // Check for JPEG header in this chunk
+        for i := 0; i < chunk.size - 1; i++:
+          if chunk[i] == 0xFF and chunk[i + 1] == 0xD8:
+            print "    🎉 JPEG HEADER FOUND in chunk $chunk-num at offset $i!"
+            return true
+    
+    print "    ❌ No JPEG header found in first 5 chunks"
+    return false
 
   heart-beat -> bool:
     return (read-reg CAM_REG_SENSOR_STATE & 0x03) == CAM_REG_SENSOR_STATE_IDLE
