@@ -8,8 +8,10 @@ To develop against the target:
 
 1. Install the latest Linux version of `jag`  from https://github.com/toitlang/jaguar/releases
 2. Run `jag setup` to prepare the tooling for use.
-3. Set the default wifi network with `jag config wifi set --wifi-ssid <wifi-ssid> --wifi-password <wifi-password>` , prompting the user for the ssid and password values.
-4. In a terminal, issue the command `jag monitor -p <port>`  Typically the port will be `/dev/ttyUSB0` and leave this running continuously.  Expect the target console out to be reported here.  When the device boots, you should see something like:  
+3. Find the target device, by running `jag scan` ... you will be looking for a device named `camera`.
+4. In a terminal, issue the command `jag monitor -p <port>`  Typically the port will be `/dev/ttyUSB0` and leave this running continuously.  
+    Expect the target console out to be reported here.  When the device boots, you should see something like:  
+
 ```
 workstation:~/workspaceToit$ jag monitor
 Starting serial monitor of port '/dev/ttyUSB0' ...
@@ -36,5 +38,6 @@ entry 0x4008055c
 [jaguar.http] INFO: running Jaguar device 'camera' (id: '5931a381-9115-4e62-bae9-9d028f3ed2f8') on 'http://192.168.0.244:9000'
 
 ```
-5. In a second terminal, run user programs via `jag run -d <device> <program.toit>`.  Prompt the user for the device name.  
+5. In a second terminal, run user programs via `jag run -d <device> <program.toit>`.  
+   In this project, the device will be named `camera`, prompt the user for the device name if necessary.
    You may need to run `jag pkg install` the first time you run a program in the `examples` or `tests`, to install necessary packages are installed.
