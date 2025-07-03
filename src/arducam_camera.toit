@@ -529,10 +529,10 @@ class ArducamCamera:
     write-reg ARDUCHIP_FIFO_2 FIFO_CLEAR_MASK
 
   start-capture -> none:
-    write-reg ARDUCHIP_FIFO_2 FIFO_START_MASK
+    write-reg ARDUCHIP_FIFO FIFO_START_MASK
  
   clear-fifo-flag -> none:
-    write-reg ARDUCHIP_FIFO_2 FIFO_CLEAR_ID_MASK
+    write-reg ARDUCHIP_FIFO FIFO_CLEAR_ID_MASK
 
 /** 
 Helper methods
@@ -541,9 +541,9 @@ Helper methods
  
   // ArduCam-specific SPI register write protocol - FIXED to match C code
   write-reg addr/int val/int -> none:
-    // Match C code exactly: cameraBusWrite sends [address, value]
+    // Match C code exactly: cameraWriteReg does busWrite(addr | 0x80, val)
     sleep --ms=1
-    camera.write #[addr, val]  // Just address and value, no 0x80 (CS handled by device)
+    camera.write #[addr | 0x80, val]  // Set bit 7 for write operations
     sleep --ms=1
  
   // ArduCam MEGA-5MP specific SPI register read protocol - EXACT ARDUINO C REPLICATION
