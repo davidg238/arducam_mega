@@ -657,6 +657,11 @@ Helper methods
     if received-length < length:
       actual-length = received-length
     
+    // Limit read size to prevent OUT_OF_BOUNDS with large FIFO values
+    max-read := 65536  // 64KB max per read
+    if actual-length > max-read:
+      actual-length = max-read
+    
     camera.write #[BURST_FIFO_READ]
     if not burst-first-flag:
       burst-first-flag = true
