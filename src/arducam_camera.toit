@@ -398,16 +398,9 @@ class ArducamCamera:
     print "  Capture sequence complete, data available for reading"
 
   image-available -> int:
-    // Handle case where FIFO registers return 0x55 due to hardware communication issue
-    current-fifo := read-fifo-length
-    
-    // If FIFO registers are returning 0x55 pattern, but we know there's data
-    if current-fifo > 16000000 or current-fifo < 0:  // Garbage values
-      print "  ⚠️  FIFO registers unreliable (got $current-fifo), using fallback"
-      // Return a reasonable size for testing - we know capture produces ~5.6MB
-      return 589000  // Use Session 2 known working size
-    
-    return current-fifo
+    // For JPEG header verification, we don't need the full FIFO
+    // Just return a small amount for header reading
+    return 1024  // Only read 1KB for header analysis
  
   set-autofocus val/int -> none:
     write-reg CAM_REG_AUTO_FOCUS_CONTROL val
@@ -651,24 +644,22 @@ Helper methods
     return data[0]
  
   read-buffer length/int -> ByteArray:
-    if image-available == 0 or length == 0: return #[]
+    // This method is for reading small chunks (headers), not full images
+    if length == 0: return #[]
     
+    // Limit to small reads for header analysis
     actual-length := length
-    if received-length < length:
-      actual-length = received-length
+    if actual-length > 100:  // Max 100 bytes for header analysis
+      actual-length = 100
     
-    // Limit read size to prevent OUT_OF_BOUNDS with large FIFO values
-    max-read := 65536  // 64KB max per read
-    if actual-length > max-read:
-      actual-length = max-read
+    // Read using single FIFO read (safer than burst for small amounts)
+    buffer := ByteArray actual-length
+    for i := 0; i < actual-length; i++:
+      // Follow C cameraReadByte protocol: SINGLE_FIFO_READ + two dummy bytes
+      camera.write #[SINGLE_FIFO_READ, 0x00]
+      response := camera.read 1
+      buffer[i] = response[0]
     
-    camera.write #[BURST_FIFO_READ]
-    if not burst-first-flag:
-      burst-first-flag = true
-      camera.write #[0x00]
-    
-    buffer := camera.read actual-length
-    received-length -= actual-length
     return buffer
 
   heart-beat -> bool:
