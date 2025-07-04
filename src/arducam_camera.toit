@@ -328,11 +328,15 @@ class ArducamCamera:
   ver-date-and-number /List := [1970, 1, 1, 0]          /**< Version information of the camera module */
 
   constructor --.spi-bus/spi.Bus --.cs/gpio.Pin:
-    // Try very conservative settings for maximum compatibility
-    camera = spi-bus.device --cs=cs --frequency=1_000_000 --mode=0  // Very slow 1MHz, mode 0
+    // Try multiple SPI configurations to find what works
+    // Start with very conservative settings
+    camera = spi-bus.device --cs=cs --frequency=100_000 --mode=0  // Very slow 100kHz, mode 0
     camera-id = ""
     current-pixel-format = CAM_IMAGE_PIX_FMT_NONE
     current-picture-mode = CAM_IMAGE_MODE_NONE
+    
+    // Print SPI configuration for debugging
+    print "SPI Config: 100kHz, mode 0"
 
   on -> none:
     print "Camera init - ArduCam MEGA-5MP (C code sequence)"
@@ -602,26 +606,34 @@ Helper methods
   // ArduCam-specific SPI register write protocol - FIXED to match C code
   // FPGA register write (direct SPI) - for FPGA/CPLD registers only
   write-fpga-reg addr/int val/int -> none:
-    // Match C code exactly: cameraWriteReg does busWrite(addr | 0x80, val)
-    sleep --ms=1
+    // Match C code exactly: busWrite does CS low -> transfer(address) -> transfer(value) -> CS high
+    // This should be equivalent to a single SPI transaction with 2 bytes
+    sleep --ms=5  // Increased delay for timing
+    
+    // Debug: Print what we're trying to write
+    print "    Writing FPGA register 0x$(%02x addr): 0x$(%02x val)"
+    
+    // Standard approach: single transaction with address and value
     camera.write #[addr | 0x80, val]  // Set bit 7 for write operations
-    sleep --ms=1
+    sleep --ms=10  // Increased delay to ensure write completes
  
   // FPGA register read (direct SPI) - for FPGA/CPLD registers only
   read-fpga-reg addr/int -> int:
     // Arduino cameraBusRead: single CS transaction with 3 transfers
     // arducamSpiCsPinLow -> transfer(address) -> transfer(0x00) -> transfer(0x00) -> arducamSpiCsPinHigh
-    sleep --ms=1
+    sleep --ms=5  // Increased delay for timing
     
     // Single SPI transaction: send address + 2 dummy bytes, read 3 responses
     command := #[addr & 0x7F, 0x00, 0x00]
     camera.write command
     responses := camera.read 3
     
-    sleep --ms=1
+    sleep --ms=5  // Increased delay
     
-    // Arduino takes the 3rd byte (index 2) as the real data
-    return responses[2]
+    // Debug: Show what we read
+    result := responses[2]  // Arduino takes the 3rd byte as real data
+    print "    Read FPGA register 0x$(%02x addr): 0x$(%02x result) (raw: $responses)"
+    return result
   wait-idle -> none:
     timeout := 25  // 50ms timeout (25 * 2ms)
     while timeout > 0:
