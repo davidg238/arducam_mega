@@ -356,8 +356,21 @@ class ArducamCamera:
     print "  4. Updating camera info..."
     camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP"
     
-    // Step 5: Read version information (C code lines 323-328)
-    print "  5. Reading version information..."
+    // Step 5: Set I2C device address (C code line 332) - CRITICAL!
+    print "  5. Setting I2C device address to 0x78..."
+    write-fpga-reg CAM_REG_DEBUG_DEVICE_ADDRESS 0x78
+    wait-idle
+    
+    // Verify address was set
+    readback-addr := read-fpga-reg CAM_REG_DEBUG_DEVICE_ADDRESS
+    print "    I2C address readback: 0x$(%02x readback-addr)"
+    if readback-addr == 0x78:
+      print "    ✅ I2C device address set successfully!"
+    else:
+      print "    ⚠️  I2C address readback failed: got 0x$(%02x readback-addr), expected 0x78"
+    
+    // Step 6: Read version information (C code lines 323-328)
+    print "  6. Reading version information..."
     read-version-info
     
     print "  ✅ C code initialization sequence complete!"
@@ -661,6 +674,15 @@ Helper methods
     
     return result
     
+  // Temporary compatibility aliases (remove after full update)
+  read-reg addr/int -> int:
+    // For now, assume FPGA register for compatibility
+    return read-fpga-reg addr
+    
+  write-reg addr/int val/int -> none:
+    // For now, assume FPGA register for compatibility
+    write-fpga-reg addr val
+
   // Sensor register write (via I2C tunnel) - for image sensor registers
   write-sensor-reg addr/int val/int -> none:
     // C code I2C tunnel write protocol
