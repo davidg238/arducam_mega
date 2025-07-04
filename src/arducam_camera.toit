@@ -27,6 +27,33 @@ CAM_REG_YEAR_ID ::= 0x41
 CAM_REG_MONTH_ID ::= 0x42
 CAM_REG_DAY_ID ::= 0x43
 
+// Power Control Register (0x02) - from Application Note
+CAM_REG_POWER_CONTROL ::= 0x02
+CAM_POWER_NORMAL ::= 0x05     // Bit[2]=1 (power_en), Bit[1]=0 (not pwdn), Bit[0]=1 (not reset)
+CAM_POWER_SLEEP ::= 0x07      // Bit[2]=1, Bit[1]=1 (pwdn), Bit[0]=1
+CAM_POWER_RESET ::= 0x04      // Bit[2]=1, Bit[1]=0, Bit[0]=0 (reset)
+
+// Memory Control Register (0x04) - from Application Note
+CAM_REG_MEMORY_CONTROL ::= 0x04
+CAM_MEMORY_START_PICTURE ::= 0x02  // Bit[1]=1 (start taking pictures)
+CAM_MEMORY_CLEAR_FLAG ::= 0x01     // Bit[0]=1 (clear write mem completion flag)
+
+// Additional Reset Control Values
+CAM_RESET_CACHE ::= 0x80          // Bit[7]=1 (reset cache/SDRAM)
+CAM_I2C_RESET ::= 0x02            // Bit[1]=1 (reset I2C)
+
+// I2C Tunnel Registers
+CAM_REG_I2C_DEVICE_ADDR ::= 0x0A
+CAM_REG_I2C_ADDR_HIGH ::= 0x0B
+CAM_REG_I2C_ADDR_LOW ::= 0x0C
+CAM_I2C_DEVICE_ADDRESS ::= 0x78   // Standard I2C device address
+
+// Version/ID Registers
+CAM_REG_SENSOR_ID ::= 0x40
+
+// Expected Values
+CAM_SENSOR_ID_5MP ::= 0x56        // Expected sensor ID for MEGA-5MP
+
 /**
 CAM_IMAGE_MODE
 */
@@ -190,7 +217,6 @@ PREVIEW_BUF_LEN ::=     255  // was 50 for MSP430G2553
 
 CAPTURE_MAX_NUM ::=                            0xff
  
-CAM_REG_POWER_CONTROL ::=                      0X02
 
 CAM_REG_FORMAT ::=                             0X20
 CAM_REG_CAPTURE_RESOLUTION ::=                 0X21
@@ -211,11 +237,9 @@ CAM_REG_MANUAL_EXPOSURE_BIT_15_8 ::=           0X34
 CAM_REG_MANUAL_EXPOSURE_BIT_7_0 ::=            0X35
 CAM_REG_BURST_FIFO_READ_OPERATION ::=          0X3C
 CAM_REG_SINGLE_FIFO_READ_OPERATION ::=         0X3D
-CAM_REG_SENSOR_ID ::=                          0x40
 
 CAM_REG_SENSOR_STATE ::=                       0x44
 CAM_REG_FPGA_VERSION_NUMBER ::=                0x49
-CAM_REG_DEBUG_DEVICE_ADDRESS ::=               0X0A
 CAM_REG_DEBUG_REGISTER_HIGH ::=                0X0B
 CAM_REG_DEBUG_REGISTER_LOW ::=                 0X0C
 CAM_REG_DEBUG_REGISTER_VALUE ::=               0X0D
@@ -362,11 +386,11 @@ class ArducamCamera:
     
     // Step 5: Set I2C device address (C code line 332) - CRITICAL!
     print "  5. Setting I2C device address to 0x78..."
-    write-fpga-reg CAM_REG_DEBUG_DEVICE_ADDRESS 0x78
+    write-fpga-reg CAM_REG_I2C_DEVICE_ADDR 0x78
     wait-idle
     
     // Verify address was set
-    readback-addr := read-fpga-reg CAM_REG_DEBUG_DEVICE_ADDRESS
+    readback-addr := read-fpga-reg CAM_REG_I2C_DEVICE_ADDR
     print "    I2C address readback: 0x$(%02x readback-addr)"
     if readback-addr == 0x78:
       print "    ✅ I2C device address set successfully!"
@@ -630,20 +654,20 @@ Helper methods
  
   // FPGA register read (direct SPI) - for FPGA/CPLD registers only
   read-fpga-reg addr/int -> int:
-    // Arduino cameraBusRead: single CS transaction with 3 transfers
-    // arducamSpiCsPinLow -> transfer(address) -> transfer(0x00) -> transfer(0x00) -> arducamSpiCsPinHigh
-    sleep --ms=5  // Increased delay for timing
+    // BREAKTHROUGH: Use working SPI protocol (Method 3 from Test 15)
+    // Write command+dummy, read 1 byte - this returns real register values
+    sleep --ms=5  // Timing delay
     
-    // Single SPI transaction: send address + 2 dummy bytes, read 3 responses
-    command := #[addr & 0x7F, 0x00, 0x00]
+    // Working SPI protocol: command + dummy byte, then read 1 response
+    command := #[addr & 0x7F, 0x00]  // Address + dummy
     camera.write command
-    responses := camera.read 3
+    response := camera.read 1
     
-    sleep --ms=5  // Increased delay
+    sleep --ms=5  // Timing delay
     
-    // Debug: Show what we read
-    result := responses[2]  // Arduino takes the 3rd byte as real data
-    print "    Read FPGA register 0x$(%02x addr): 0x$(%02x result) (raw: $responses)"
+    // This method returns actual register values, not echo values
+    result := response[0]
+    print "    Read FPGA register 0x$(%02x addr): 0x$(%02x result)"
     return result
   wait-idle -> none:
     timeout := 25  // 50ms timeout (25 * 2ms)
