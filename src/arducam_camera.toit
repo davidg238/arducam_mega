@@ -8,7 +8,17 @@ CAM_ERR_SUCCESS     ::= 0  /**<Operation succeeded*/
 CAM_ERR_NO_CALLBACK ::= -1 /**< No callback function is registered*/
 
 /**
-Sensor reset and control registers from C code
+ArduCam Register Architecture:
+
+FPGA/CPLD Registers (Direct SPI):
+- 0x00-0x0F: FPGA control registers (test, debug, etc.)
+- 0x3C-0x4F: FIFO and data registers
+- 0x07: Sensor reset/I2C control
+
+Sensor Registers (I2C Tunnel):
+- 0x20-0x35: Image sensor configuration (format, resolution, etc.)
+- 0x40-0x43: Sensor ID and version info
+- 0x44: Sensor state (though accessed via FPGA for polling)
 */
 CAM_REG_SENSOR_RESET ::= 0x07
 CAM_SENSOR_RESET_ENABLE ::= 0x40  // (1 << 6)
@@ -209,6 +219,7 @@ CAM_REG_DEBUG_DEVICE_ADDRESS ::=               0X0A
 CAM_REG_DEBUG_REGISTER_HIGH ::=                0X0B
 CAM_REG_DEBUG_REGISTER_LOW ::=                 0X0C
 CAM_REG_DEBUG_REGISTER_VALUE ::=               0X0D
+SENSOR_DATA ::= 0x48  // Camera sensor data register
  
 CAM_REG_SENSOR_STATE_IDLE ::=                  (1 << 1)
 
@@ -331,7 +342,7 @@ class ArducamCamera:
     
     // Step 1: Reset CPLD and camera (C code line 319)
     print "  1. Resetting sensor..."
-    write-reg CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
+    write-fpga-reg CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
     
     // Step 2: Wait for I2C idle (C code line 320)
     print "  2. Waiting for I2C idle..."
@@ -355,13 +366,11 @@ class ArducamCamera:
   read-version-info -> none:
     print "    Reading version information..."
     
-    year := read-reg CAM_REG_YEAR_ID
-    wait-idle
+    year := read-sensor-reg CAM_REG_YEAR_ID
     
-    month := read-reg CAM_REG_MONTH_ID
-    wait-idle
+    month := read-sensor-reg CAM_REG_MONTH_ID
     
-    day := read-reg CAM_REG_DAY_ID
+    day := read-sensor-reg CAM_REG_DAY_ID
     wait-idle
     
     print "    Version date: $year/$month/$day"
@@ -373,11 +382,9 @@ class ArducamCamera:
   
   get-sensor-config -> none:
     // For MEGA-5MP, try multiple sensor ID locations and methods - with I2C waits
-    index := read-reg CAM_REG_SENSOR_ID  // 0x40
-    wait-idle
-    index2 := read-reg 0x41  // Alternative sensor ID location
-    wait-idle
-    index3 := read-reg 0x42  // Another alternative
+    index := read-sensor-reg CAM_REG_SENSOR_ID  // 0x40
+    index2 := read-sensor-reg 0x41  // Alternative sensor ID location
+    index3 := read-sensor-reg 0x42  // Another alternative
     wait-idle
     
     print "MEGA-5MP Sensor ID checks: 0x40=0x$(index.stringify 16), 0x41=0x$(index2.stringify 16), 0x42=0x$(index3.stringify 16)"
@@ -450,10 +457,10 @@ class ArducamCamera:
   take-multi-pictures mode/int pixel-format/int num/int -> none:
     if current-pixel-format != pixel-format: 
       current-pixel-format = pixel-format
-      write-reg CAM_REG_FORMAT pixel-format
+      write-sensor-reg CAM_REG_FORMAT pixel-format
     if current-picture-mode != mode:
       current-picture-mode = mode
-      write-reg CAM_REG_CAPTURE_RESOLUTION (CAM_SET_CAPTURE_MODE | mode)
+      write-sensor-reg CAM_REG_CAPTURE_RESOLUTION (CAM_SET_CAPTURE_MODE | mode)
 
     if num > CAPTURE_MAX_NUM: num = CAPTURE_MAX_NUM
     write-reg ARDUCHIP_FRAMES num
@@ -580,14 +587,15 @@ Helper methods
     sleep --ms=1000  // Allow capture time
  
   // ArduCam-specific SPI register write protocol - FIXED to match C code
-  write-reg addr/int val/int -> none:
+  // FPGA register write (direct SPI) - for FPGA/CPLD registers only
+  write-fpga-reg addr/int val/int -> none:
     // Match C code exactly: cameraWriteReg does busWrite(addr | 0x80, val)
     sleep --ms=1
     camera.write #[addr | 0x80, val]  // Set bit 7 for write operations
     sleep --ms=1
  
-  // ArduCam MEGA-5MP specific SPI register read protocol - EXACT ARDUINO C REPLICATION
-  read-reg addr/int -> int:
+  // FPGA register read (direct SPI) - for FPGA/CPLD registers only
+  read-fpga-reg addr/int -> int:
     // Arduino cameraBusRead: single CS transaction with 3 transfers
     // arducamSpiCsPinLow -> transfer(address) -> transfer(0x00) -> transfer(0x00) -> arducamSpiCsPinHigh
     sleep --ms=1
@@ -604,7 +612,7 @@ Helper methods
   wait-idle -> none:
     timeout := 25  // 50ms timeout (25 * 2ms)
     while timeout > 0:
-      sensor-state := read-reg CAM_REG_SENSOR_STATE
+      sensor-state := read-fpga-reg CAM_REG_SENSOR_STATE
       state-bits := sensor-state & 0x03
       if state-bits == CAM_REG_SENSOR_STATE_IDLE:
         print "[DEBUG] wait-idle: sensor ready (state=0x$(%02x sensor-state), bits=0x$(%02x state-bits))"
@@ -619,7 +627,7 @@ Helper methods
     print "  Waiting for I2C idle ($context)..."
     timeout := 25
     while timeout > 0:
-      sensor-state := read-reg CAM_REG_SENSOR_STATE
+      sensor-state := read-fpga-reg CAM_REG_SENSOR_STATE
       state-bits := sensor-state & 0x03
       if state-bits == CAM_REG_SENSOR_STATE_IDLE:
         print "    ✅ I2C idle achieved! (state=0x$(%02x sensor-state))"
@@ -628,6 +636,52 @@ Helper methods
       timeout--
     print "    ❌ I2C idle timeout ($context)"
     return false
+
+  // Sensor register read (via I2C tunnel) - for image sensor registers
+  read-sensor-reg addr/int -> int:
+    // C code I2C tunnel protocol from ArducamCamera.c line 372-377
+    print "    Reading sensor register 0x$(%02x addr) via I2C tunnel..."
+    
+    // Step 1: Set register address (high and low bytes)
+    register-high := (addr >> 8) & 0xFF
+    register-low := addr & 0xFF
+    write-fpga-reg CAM_REG_DEBUG_REGISTER_HIGH register-high
+    wait-idle
+    write-fpga-reg CAM_REG_DEBUG_REGISTER_LOW register-low  
+    wait-idle
+    
+    // Step 2: Set I2C read mode
+    write-fpga-reg CAM_REG_SENSOR_RESET CAM_I2C_READ_MODE
+    wait-idle
+    sleep --ms=5  // C code: wait read finish
+    
+    // Step 3: Read result from sensor data register
+    result := read-fpga-reg SENSOR_DATA  // 0x48
+    print "    Sensor register 0x$(%02x addr) = 0x$(%02x result)"
+    
+    return result
+    
+  // Sensor register write (via I2C tunnel) - for image sensor registers
+  write-sensor-reg addr/int val/int -> none:
+    // C code I2C tunnel write protocol
+    print "    Writing sensor register 0x$(%02x addr) = 0x$(%02x val) via I2C tunnel..."
+    
+    // Step 1: Set register address
+    register-high := (addr >> 8) & 0xFF
+    register-low := addr & 0xFF
+    write-fpga-reg CAM_REG_DEBUG_REGISTER_HIGH register-high
+    wait-idle
+    write-fpga-reg CAM_REG_DEBUG_REGISTER_LOW register-low
+    wait-idle
+    
+    // Step 2: Set value to write
+    write-fpga-reg CAM_REG_DEBUG_REGISTER_VALUE val
+    wait-idle
+    
+    // Step 3: Trigger I2C write (different from read mode)
+    write-fpga-reg CAM_REG_SENSOR_RESET (CAM_SENSOR_RESET_ENABLE | CAM_I2C_READ_MODE)
+    wait-idle
+    sleep --ms=5  // Wait for write to complete
 
   // Test I2C tunnel functionality
   test-format-register -> none:
@@ -651,9 +705,9 @@ Helper methods
       print "    ❌ I2C tunnel not working for format register"
 
   read-fifo-length -> int:
-    len1 := read-reg FIFO_SIZE1
-    len2 := read-reg FIFO_SIZE2
-    len3 := read-reg FIFO_SIZE3
+    len1 := read-fpga-reg FIFO_SIZE1
+    len2 := read-fpga-reg FIFO_SIZE2
+    len3 := read-fpga-reg FIFO_SIZE3
     length := ((len3 << 16) | (len2 << 8) | len1) & 0xffffff
     return length
  
@@ -687,7 +741,7 @@ Helper methods
     return buffer
 
   heart-beat -> bool:
-    return (read-reg CAM_REG_SENSOR_STATE & 0x03) == CAM_REG_SENSOR_STATE_IDLE
+    return (read-fpga-reg CAM_REG_SENSOR_STATE & 0x03) == CAM_REG_SENSOR_STATE_IDLE
 
   low-power-on -> none:
     write-reg CAM_REG_POWER_CONTROL 0x07
