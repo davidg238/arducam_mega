@@ -39,7 +39,7 @@ main:
     
     try:
       // Execute via jag run
-      cmd := "jag run -d camera $test-name.toit"
+      cmd := "jag run -d camera $(test-name).toit"
       print "Executing: $cmd"
       
       // Note: This is a simplified version - actual implementation would need

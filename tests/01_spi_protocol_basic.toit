@@ -35,7 +35,7 @@ main:
     print "  Write test: 0x07 = 0x40 (reset)"
     
     // Analyze responses
-    unique-responses := responses.filter: | val | responses.count: val == 1
+    unique-responses := responses.filter: | val | (responses.filter: it == val).size == 1
     all-same := responses.every: responses[0] == it
     
     if all-same and responses[0] == 0x55:

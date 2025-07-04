@@ -126,7 +126,7 @@ verify-jpeg-capture device -> none:
   write-reg-fpga device 0x3C 0x00  // Burst FIFO read mode
   
   // Read first bytes using FIFO read command
-  device.write //[0x3D]  // Single FIFO read
+  device.write #[0x3D]  // Single FIFO read
   header-bytes := device.read 20
   
   print "    First 20 bytes:"
