@@ -383,11 +383,11 @@ class ArducamCamera:
   read-version-info -> none:
     print "    Reading version information..."
     
-    year := read-sensor-reg CAM_REG_YEAR_ID
+    year := read-fpga-reg CAM_REG_YEAR_ID
     
-    month := read-sensor-reg CAM_REG_MONTH_ID
+    month := read-fpga-reg CAM_REG_MONTH_ID
     
-    day := read-sensor-reg CAM_REG_DAY_ID
+    day := read-fpga-reg CAM_REG_DAY_ID
     wait-idle
     
     print "    Version date: $year/$month/$day"
@@ -399,9 +399,9 @@ class ArducamCamera:
   
   get-sensor-config -> none:
     // For MEGA-5MP, try multiple sensor ID locations and methods - with I2C waits
-    index := read-sensor-reg CAM_REG_SENSOR_ID  // 0x40
-    index2 := read-sensor-reg 0x41  // Alternative sensor ID location
-    index3 := read-sensor-reg 0x42  // Another alternative
+    index := read-fpga-reg CAM_REG_SENSOR_ID  // 0x40
+    index2 := read-fpga-reg 0x41  // Alternative sensor ID location
+    index3 := read-fpga-reg 0x42  // Another alternative
     wait-idle
     
     print "MEGA-5MP Sensor ID checks: 0x40=0x$(index.stringify 16), 0x41=0x$(index2.stringify 16), 0x42=0x$(index3.stringify 16)"
@@ -454,7 +454,7 @@ class ArducamCamera:
     return received-length
  
   set-autofocus val/int -> none:
-    write-reg CAM_REG_AUTO_FOCUS_CONTROL val
+    write-fpga-reg CAM_REG_AUTO_FOCUS_CONTROL val
  
   take-picture mode/int pixel-format/int -> none:
     // Use ArduCam high-level command protocol (Session 2 breakthrough)
@@ -474,19 +474,19 @@ class ArducamCamera:
   take-multi-pictures mode/int pixel-format/int num/int -> none:
     if current-pixel-format != pixel-format: 
       current-pixel-format = pixel-format
-      write-sensor-reg CAM_REG_FORMAT pixel-format
+      write-fpga-reg CAM_REG_FORMAT pixel-format
     if current-picture-mode != mode:
       current-picture-mode = mode
-      write-sensor-reg CAM_REG_CAPTURE_RESOLUTION (CAM_SET_CAPTURE_MODE | mode)
+      write-fpga-reg CAM_REG_CAPTURE_RESOLUTION (CAM_SET_CAPTURE_MODE | mode)
 
     if num > CAPTURE_MAX_NUM: num = CAPTURE_MAX_NUM
-    write-reg ARDUCHIP_FRAMES num
+    write-fpga-reg ARDUCHIP_FRAMES num
     set-capture
   start-preview mode/int -> none:
     preview-mode = true
-    write-reg CAM_REG_FORMAT CAM_IMAGE_PIX_FMT_JPG
+    write-fpga-reg CAM_REG_FORMAT CAM_IMAGE_PIX_FMT_JPG
     wait-idle
-    write-reg CAM_REG_CAPTURE_RESOLUTION (CAM_SET_VIDEO_MODE | mode)
+    write-fpga-reg CAM_REG_CAPTURE_RESOLUTION (CAM_SET_VIDEO_MODE | mode)
     wait-idle
     set-capture
 
@@ -496,80 +496,80 @@ class ArducamCamera:
     preview-mode = false
     received-length = 0
     total-length = 0
-    write-reg CAM_REG_FORMAT CAM_IMAGE_PIX_FMT_JPG
+    write-fpga-reg CAM_REG_FORMAT CAM_IMAGE_PIX_FMT_JPG
     wait-idle
   set-image-quality quality/int -> none:
-    write-reg CAM_REG_IMAGE_QUALITY quality
+    write-fpga-reg CAM_REG_IMAGE_QUALITY quality
 
 
 /** 
   reset cpld and camera
 */
   reset -> none:
-    write-reg CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
+    write-fpga-reg CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
  
   set-auto-white-balance-mode mode/int -> none:
-    write-reg CAM_REG_WHITEBALANCE_MODE_CONTROL mode
+    write-fpga-reg CAM_REG_WHITEBALANCE_MODE_CONTROL mode
  
   set-auto-white-balance val/int -> none:
     symbol := 0
     if val > 0: symbol |= 0x80
     symbol |= SET_WHITEBALANCE
-    write-reg CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol
+    write-fpga-reg CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol
  
   set-auto-iso-sensitive val/int -> none:
     symbol := 0
     if val > 0: symbol |= 0x80
     symbol |= SET_GAIN
-    write-reg CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol
+    write-fpga-reg CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol
  
   set-iso-sensitivity iso-sense/int -> none:
     iso-val := iso-sense
     if camera-info and camera-info.camera-id == "3MP":
       if iso-sense >= 1 and iso-sense <= OV3640-GAIN-VALUE.size:
         iso-val = OV3640-GAIN-VALUE[iso-sense - 1]
-    write-reg CAM_REG_MANUAL_GAIN_BIT_9_8 (iso-val >> 8)
-    write-reg CAM_REG_MANUAL_GAIN_BIT_7_0 (iso-val & 0xff)
+    write-fpga-reg CAM_REG_MANUAL_GAIN_BIT_9_8 (iso-val >> 8)
+    write-fpga-reg CAM_REG_MANUAL_GAIN_BIT_7_0 (iso-val & 0xff)
  
   set-auto-exposure val/bool -> none:
     symbol := 0
     if val: symbol |= 0x80
     symbol |= SET_EXPOSURE
-    write-reg CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol
+    write-fpga-reg CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol
  
   set-absolute-exposure exposure-time/int -> none:
-    write-reg CAM_REG_MANUAL_EXPOSURE_BIT_19_16 ((exposure-time >> 16) & 0xff)
-    write-reg CAM_REG_MANUAL_EXPOSURE_BIT_15_8 ((exposure-time >> 8) & 0xff)
-    write-reg CAM_REG_MANUAL_EXPOSURE_BIT_7_0 (exposure-time & 0xff)
+    write-fpga-reg CAM_REG_MANUAL_EXPOSURE_BIT_19_16 ((exposure-time >> 16) & 0xff)
+    write-fpga-reg CAM_REG_MANUAL_EXPOSURE_BIT_15_8 ((exposure-time >> 8) & 0xff)
+    write-fpga-reg CAM_REG_MANUAL_EXPOSURE_BIT_7_0 (exposure-time & 0xff)
 
  
   set-color-effect effect/int -> none:
-    write-reg CAM_REG_COLOR_EFFECT_CONTROL effect
+    write-fpga-reg CAM_REG_COLOR_EFFECT_CONTROL effect
     wait-idle
 
   set-saturation level/int -> none:
-    write-reg CAM_REG_SATURATION_CONTROL level
+    write-fpga-reg CAM_REG_SATURATION_CONTROL level
     
   set-ev level/int -> none:
-    write-reg CAM_REG_EV_CONTROL level
+    write-fpga-reg CAM_REG_EV_CONTROL level
 
   set-contrast level/int -> none:
-    write-reg CAM_REG_CONTRAST_CONTROL level
+    write-fpga-reg CAM_REG_CONTRAST_CONTROL level
  
   set-sharpness level/int -> none:
-    write-reg CAM_REG_SHARPNESS_CONTROL level
+    write-fpga-reg CAM_REG_SHARPNESS_CONTROL level
  
   set-brightness level/int -> none:
-    write-reg CAM_REG_BRIGHTNESS_CONTROL level
+    write-fpga-reg CAM_REG_BRIGHTNESS_CONTROL level
  
   flush-fifo -> none:
-    write-reg ARDUCHIP_FIFO_2 FIFO_CLEAR_MASK
+    write-fpga-reg ARDUCHIP_FIFO_2 FIFO_CLEAR_MASK
 
   start-capture -> none:
-    write-reg ARDUCHIP_FIFO FIFO_START_MASK
+    write-fpga-reg ARDUCHIP_FIFO FIFO_START_MASK
  
   clear-fifo-flag -> none:
-    write-reg ARDUCHIP_FIFO FIFO_CLEAR_ID_MASK
+    write-fpga-reg ARDUCHIP_FIFO FIFO_CLEAR_ID_MASK
 
 /** 
 Helper methods
@@ -597,11 +597,22 @@ Helper methods
     sleep --ms=100  // Allow command processing
   
   send-arducam-capture-command -> none:
-    // ArduCam take picture command: 0x55 0x10 0xAA
-    capture-command := #[0x55, 0x10, 0xAA]
+    // ArduCam take picture command: 0x55 0x10 [param] 0xAA
+    // Protocol shows 4-byte format, param can be 0x00 for basic capture
+    capture-command := #[0x55, 0x10, 0x00, 0xAA]
     print "Sending ArduCam capture command"
     camera.write capture-command
     sleep --ms=1000  // Allow capture time
+
+  // ArduCam debug mode command: 0x55 0x12 [reg_high] [reg_low] [value] 0xAA
+  // This allows direct register writing via high-level command protocol
+  send-arducam-debug-command reg/int value/int -> none:
+    reg-high := (reg >> 8) & 0xFF
+    reg-low := reg & 0xFF
+    debug-command := #[0x55, 0x12, reg-high, reg-low, value, 0xAA]
+    print "Sending ArduCam debug command: reg=0x$(%04x reg), value=0x$(%02x value)"
+    camera.write debug-command
+    sleep --ms=100  // Allow command processing
  
   // ArduCam-specific SPI register write protocol - FIXED to match C code
   // FPGA register write (direct SPI) - for FPGA/CPLD registers only
@@ -686,14 +697,7 @@ Helper methods
     
     return result
     
-  // Temporary compatibility aliases (remove after full update)
-  read-reg addr/int -> int:
-    // For now, assume FPGA register for compatibility
-    return read-fpga-reg addr
-    
-  write-reg addr/int val/int -> none:
-    // For now, assume FPGA register for compatibility
-    write-fpga-reg addr val
+  // Compatibility aliases removed - all register access now explicit
 
   // Sensor register write (via I2C tunnel) - for image sensor registers
   write-sensor-reg addr/int val/int -> none:
@@ -721,14 +725,14 @@ Helper methods
   test-format-register -> none:
     print "  Testing format register setting via I2C tunnel..."
     
-    format-before := read-reg CAM_REG_FORMAT
+    format-before := read-fpga-reg CAM_REG_FORMAT
     print "    Format before: 0x$(%02x format-before)"
     
-    write-reg CAM_REG_FORMAT CAM_IMAGE_PIX_FMT_JPG
+    write-fpga-reg CAM_REG_FORMAT CAM_IMAGE_PIX_FMT_JPG
     i2c-success := try-wait-idle "format register write"
     
     if i2c-success:
-      format-after := read-reg CAM_REG_FORMAT
+      format-after := read-fpga-reg CAM_REG_FORMAT
       print "    Format after: 0x$(%02x format-after)"
       
       if format-after == CAM_IMAGE_PIX_FMT_JPG:
@@ -746,7 +750,7 @@ Helper methods
     return length
  
   get-bit addr/int bit/int -> int:
-    temp := read-reg addr
+    temp := read-fpga-reg addr
     return temp & bit
   set-fifo-burst -> none:
     camera.write #[BURST_FIFO_READ]
@@ -778,16 +782,16 @@ Helper methods
     return (read-fpga-reg CAM_REG_SENSOR_STATE & 0x03) == CAM_REG_SENSOR_STATE_IDLE
 
   low-power-on -> none:
-    write-reg CAM_REG_POWER_CONTROL 0x07
+    write-fpga-reg CAM_REG_POWER_CONTROL 0x07
  
   low-power-off -> none:
-    write-reg CAM_REG_POWER_CONTROL 0x05
+    write-fpga-reg CAM_REG_POWER_CONTROL 0x05
   // Quick SPI test method - don't call full on() method
   test-spi-basic -> bool:
     // Try a few basic register reads to see if we get any response
-    test1 := read-reg 0x00
-    test2 := read-reg 0x01  
-    test3 := read-reg 0x40  // Sensor ID register
+    test1 := read-fpga-reg 0x00
+    test2 := read-fpga-reg 0x01  
+    test3 := read-fpga-reg 0x40  // Sensor ID register
     
     print "    Basic SPI test: 0x00=0x$(test1.stringify 16), 0x01=0x$(test2.stringify 16), 0x40=0x$(test3.stringify 16)"
     
@@ -806,7 +810,7 @@ Helper methods
     print "  Testing different SPI modes..."
     
     // Test current mode
-    current-result := read-reg 0x40
+    current-result := read-fpga-reg 0x40
     print "    Current mode (0): reg 0x40 = 0x$(current-result.stringify 16)"
     
     // We can't easily change SPI mode mid-stream, but we can try different timing
