@@ -8,6 +8,16 @@ CAM_ERR_SUCCESS     ::= 0  /**<Operation succeeded*/
 CAM_ERR_NO_CALLBACK ::= -1 /**< No callback function is registered*/
 
 /**
+Sensor reset and control registers from C code
+*/
+CAM_REG_SENSOR_RESET ::= 0x07
+CAM_SENSOR_RESET_ENABLE ::= 0x40  // (1 << 6)
+CAM_I2C_READ_MODE ::= 0x01        // (1 << 0)
+CAM_REG_YEAR_ID ::= 0x41
+CAM_REG_MONTH_ID ::= 0x42
+CAM_REG_DAY_ID ::= 0x43
+
+/**
 CAM_IMAGE_MODE
 */
 CAM_IMAGE_MODE_QQVGA  ::= 0x00  /**<160x120 */
@@ -171,7 +181,7 @@ PREVIEW_BUF_LEN ::=     255  // was 50 for MSP430G2553
 CAPTURE_MAX_NUM ::=                            0xff
  
 CAM_REG_POWER_CONTROL ::=                      0X02
-CAM_REG_SENSOR_RESET ::=                       0X07
+
 CAM_REG_FORMAT ::=                             0X20
 CAM_REG_CAPTURE_RESOLUTION ::=                 0X21
 CAM_REG_BRIGHTNESS_CONTROL ::=                 0X22
@@ -192,9 +202,7 @@ CAM_REG_MANUAL_EXPOSURE_BIT_7_0 ::=            0X35
 CAM_REG_BURST_FIFO_READ_OPERATION ::=          0X3C
 CAM_REG_SINGLE_FIFO_READ_OPERATION ::=         0X3D
 CAM_REG_SENSOR_ID ::=                          0x40
-CAM_REG_YEAR_ID ::=                            0x41
-CAM_REG_MONTH_ID ::=                           0x42
-CAM_REG_DAY_ID ::=                             0x43
+
 CAM_REG_SENSOR_STATE ::=                       0x44
 CAM_REG_FPGA_VERSION_NUMBER ::=                0x49
 CAM_REG_DEBUG_DEVICE_ADDRESS ::=               0X0A
@@ -203,7 +211,7 @@ CAM_REG_DEBUG_REGISTER_LOW ::=                 0X0C
 CAM_REG_DEBUG_REGISTER_VALUE ::=               0X0D
  
 CAM_REG_SENSOR_STATE_IDLE ::=                  (1 << 1)
-CAM_SENSOR_RESET_ENABLE ::=                    (1 << 6)
+
 CAM_FORMAT_BASICS ::=                          (0 << 0)
 CAM_SET_CAPTURE_MODE ::=                       (0 << 7)
 CAM_SET_VIDEO_MODE ::=                         (1 << 7)
@@ -316,32 +324,52 @@ class ArducamCamera:
     current-picture-mode = CAM_IMAGE_MODE_NONE
 
   on -> none:
-    print "Camera init - ArduCam MEGA-5MP (using command protocol)"
+    print "Camera init - ArduCam MEGA-5MP (C code sequence)"
     
-    // Session 2 breakthrough: ArduCam uses high-level commands, not low-level registers
-    // Simplified initialization that focuses on command protocol readiness
-    print "Initializing ArduCam MEGA-5MP with command protocol..."
+    // Implement C code cameraBegin() sequence exactly
+    print "Executing C code initialization sequence..."
     
-    // Step 1: Basic hardware detection (FPGA/CPLD level)
-    print "Detecting ArduCam hardware..."
-    test-reg := read-reg 0x00  // Basic connectivity test
-    if test-reg == 0x55:
-      print "  ⚠️  Getting 0x55 response - possible hardware issue"
-    else:
-      print "  ✅ Hardware detected (reg 0x00 = 0x$(%02x test-reg))"
+    // Step 1: Reset CPLD and camera (C code line 319)
+    print "  1. Resetting sensor..."
+    write-reg CAM_REG_SENSOR_RESET CAM_SENSOR_RESET_ENABLE
     
-    // Step 2: Set default camera info for command protocol
-    camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP-command"
-    print "  Using MEGA-5MP command protocol configuration"
+    // Step 2: Wait for I2C idle (C code line 320)
+    print "  2. Waiting for I2C idle..."
+    wait-idle
     
-    // Step 3: Test basic FIFO readiness 
-    print "Checking FIFO system..."
-    fifo-size := read-fifo-length
-    print "  Initial FIFO size: $fifo-size bytes"
+    // Step 3: Get sensor configuration (C code line 321)
+    print "  3. Getting sensor configuration..."
+    get-sensor-config
     
-    // Step 4: Ready for command protocol
-    print "  ✅ ArduCam ready for high-level commands"
+    // Step 4: Update camera info (C code line 322)
+    print "  4. Updating camera info..."
+    camera-info = CameraInfo.camera-info-5MP --camera-id="MEGA-5MP"
+    
+    // Step 5: Read version information (C code lines 323-328)
+    print "  5. Reading version information..."
+    read-version-info
+    
+    print "  ✅ C code initialization sequence complete!"
     print "Camera initialization complete!"
+  
+  read-version-info -> none:
+    print "    Reading version information..."
+    
+    year := read-reg CAM_REG_YEAR_ID
+    wait-idle
+    
+    month := read-reg CAM_REG_MONTH_ID
+    wait-idle
+    
+    day := read-reg CAM_REG_DAY_ID
+    wait-idle
+    
+    print "    Version date: $year/$month/$day"
+    
+    if year != 0x55 or month != 0x55 or day != 0x55:
+      print "    ✅ Got version info - initialization successful!"
+    else:
+      print "    ⚠️  Version info still 0x55 - communication issue"
   
   get-sensor-config -> none:
     // For MEGA-5MP, try multiple sensor ID locations and methods - with I2C waits
@@ -380,27 +408,26 @@ class ArducamCamera:
       print "✓ Using MEGA-5MP configuration (user confirmed hardware)"
   
   set-capture -> none:
-    // Session 2 command protocol uses high-level commands, not low-level FIFO control
-    // For ArduCam command protocol, capture is initiated by send-arducam-capture-command
-    print "  FIFO capture sequence (compatibility mode)"
-    
     clear-fifo-flag
     start-capture
     
-    // Simplified timeout - don't rely on problematic register reads
-    sleep --ms=1000  // Give time for capture
+    // Add timeout to prevent hanging
+    timeout := 100  // 200ms timeout
+    while (get-bit ARDUCHIP_TRIG CAP_DONE_MASK) == 0 and timeout > 0:
+      sleep --ms=2
+      timeout--
     
-    // Set reasonable defaults for Session 2 command protocol
-    received-length = 589000  // Known working size from Session 2
-    total-length = received-length
+    if timeout == 0:
+      print "Warning: Capture timeout - camera may not be responding properly"
+      received-length = 0
+      total-length = 0
+    else:
+      received-length = read-fifo-length
+      total-length = received-length
     burst-first-flag = false
-    
-    print "  Capture sequence complete, data available for reading"
 
   image-available -> int:
-    // For JPEG header verification, we don't need the full FIFO
-    // Just return a small amount for header reading
-    return 1024  // Only read 1KB for header analysis
+    return received-length
  
   set-autofocus val/int -> none:
     write-reg CAM_REG_AUTO_FOCUS_CONTROL val
@@ -644,54 +671,20 @@ Helper methods
     return data[0]
  
   read-buffer length/int -> ByteArray:
-    // This method is for reading small chunks (headers), not full images
-    if length == 0: return #[]
+    if image-available == 0 or length == 0: return #[]
     
-    // Limit to small reads for header analysis
     actual-length := length
-    if actual-length > 255:  // Use C code PREVIEW_BUF_LEN size
-      actual-length = 255
+    if received-length < length:
+      actual-length = received-length
     
-    // Use burst FIFO read protocol like C code
-    camera.write #[BURST_FIFO_READ]  // Send 0x3C
+    camera.write #[BURST_FIFO_READ]
     if not burst-first-flag:
       burst-first-flag = true
-      camera.write #[0x00]  // Send initial 0x00
+      camera.write #[0x00]
     
-    // Read chunk using SPI transfer protocol
-    buffer := ByteArray actual-length
-    for i := 0; i < actual-length; i++:
-      camera.write #[0x00]  // Send dummy byte
-      response := camera.read 1  // Read response byte
-      buffer[i] = response[0]
-    
+    buffer := camera.read actual-length
+    received-length -= actual-length
     return buffer
-  
-  // Stream-based JPEG header detection (C code style)
-  check-jpeg-headers -> bool:
-    print "  Checking for JPEG headers using streaming..."
-    
-    // Reset burst flag for new read session
-    burst-first-flag = false
-    
-    // Read first few chunks to look for JPEG header
-    for chunk-num := 0; chunk-num < 5; chunk-num++:  // Check first ~1KB
-      chunk := read-buffer 255  // C code chunk size
-      
-      print "    Chunk $chunk-num: $chunk.size bytes"
-      if chunk.size >= 2:
-        print "      First 10 bytes: "
-        for i := 0; i < 10 and i < chunk.size; i++:
-          print "        [$i]: 0x$(%02x chunk[i])"
-        
-        // Check for JPEG header in this chunk
-        for i := 0; i < chunk.size - 1; i++:
-          if chunk[i] == 0xFF and chunk[i + 1] == 0xD8:
-            print "    🎉 JPEG HEADER FOUND in chunk $chunk-num at offset $i!"
-            return true
-    
-    print "    ❌ No JPEG header found in first 5 chunks"
-    return false
 
   heart-beat -> bool:
     return (read-reg CAM_REG_SENSOR_STATE & 0x03) == CAM_REG_SENSOR_STATE_IDLE
