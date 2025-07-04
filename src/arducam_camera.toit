@@ -479,6 +479,7 @@ class ArducamCamera:
  
   set-autofocus val/int -> none:
     write-fpga-reg CAM_REG_AUTO_FOCUS_CONTROL val
+    wait-idle
  
   take-picture mode/int pixel-format/int -> none:
     // Use ArduCam high-level command protocol (Session 2 breakthrough)
@@ -499,9 +500,11 @@ class ArducamCamera:
     if current-pixel-format != pixel-format: 
       current-pixel-format = pixel-format
       write-fpga-reg CAM_REG_FORMAT pixel-format
+    wait-idle
     if current-picture-mode != mode:
       current-picture-mode = mode
       write-fpga-reg CAM_REG_CAPTURE_RESOLUTION (CAM_SET_CAPTURE_MODE | mode)
+    wait-idle
 
     if num > CAPTURE_MAX_NUM: num = CAPTURE_MAX_NUM
     write-fpga-reg ARDUCHIP_FRAMES num
@@ -510,7 +513,9 @@ class ArducamCamera:
     preview-mode = true
     write-fpga-reg CAM_REG_FORMAT CAM_IMAGE_PIX_FMT_JPG
     wait-idle
+    wait-idle
     write-fpga-reg CAM_REG_CAPTURE_RESOLUTION (CAM_SET_VIDEO_MODE | mode)
+    wait-idle
     wait-idle
     set-capture
 
@@ -522,8 +527,10 @@ class ArducamCamera:
     total-length = 0
     write-fpga-reg CAM_REG_FORMAT CAM_IMAGE_PIX_FMT_JPG
     wait-idle
+    wait-idle
   set-image-quality quality/int -> none:
     write-fpga-reg CAM_REG_IMAGE_QUALITY quality
+    wait-idle
 
 
 /** 
@@ -534,18 +541,21 @@ class ArducamCamera:
  
   set-auto-white-balance-mode mode/int -> none:
     write-fpga-reg CAM_REG_WHITEBALANCE_MODE_CONTROL mode
+    wait-idle
  
   set-auto-white-balance val/int -> none:
     symbol := 0
     if val > 0: symbol |= 0x80
     symbol |= SET_WHITEBALANCE
     write-fpga-reg CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol
+    wait-idle
  
   set-auto-iso-sensitive val/int -> none:
     symbol := 0
     if val > 0: symbol |= 0x80
     symbol |= SET_GAIN
     write-fpga-reg CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol
+    wait-idle
  
   set-iso-sensitivity iso-sense/int -> none:
     iso-val := iso-sense
@@ -553,18 +563,24 @@ class ArducamCamera:
       if iso-sense >= 1 and iso-sense <= OV3640-GAIN-VALUE.size:
         iso-val = OV3640-GAIN-VALUE[iso-sense - 1]
     write-fpga-reg CAM_REG_MANUAL_GAIN_BIT_9_8 (iso-val >> 8)
+    wait-idle
     write-fpga-reg CAM_REG_MANUAL_GAIN_BIT_7_0 (iso-val & 0xff)
+    wait-idle
  
   set-auto-exposure val/bool -> none:
     symbol := 0
     if val: symbol |= 0x80
     symbol |= SET_EXPOSURE
     write-fpga-reg CAM_REG_EXPOSURE_GAIN_WHITEBALANCE_CONTROL symbol
+    wait-idle
  
   set-absolute-exposure exposure-time/int -> none:
     write-fpga-reg CAM_REG_MANUAL_EXPOSURE_BIT_19_16 ((exposure-time >> 16) & 0xff)
+    wait-idle
     write-fpga-reg CAM_REG_MANUAL_EXPOSURE_BIT_15_8 ((exposure-time >> 8) & 0xff)
+    wait-idle
     write-fpga-reg CAM_REG_MANUAL_EXPOSURE_BIT_7_0 (exposure-time & 0xff)
+    wait-idle
 
  
   set-color-effect effect/int -> none:
@@ -573,18 +589,23 @@ class ArducamCamera:
 
   set-saturation level/int -> none:
     write-fpga-reg CAM_REG_SATURATION_CONTROL level
+    wait-idle
     
   set-ev level/int -> none:
     write-fpga-reg CAM_REG_EV_CONTROL level
+    wait-idle
 
   set-contrast level/int -> none:
     write-fpga-reg CAM_REG_CONTRAST_CONTROL level
+    wait-idle
  
   set-sharpness level/int -> none:
     write-fpga-reg CAM_REG_SHARPNESS_CONTROL level
+    wait-idle
  
   set-brightness level/int -> none:
     write-fpga-reg CAM_REG_BRIGHTNESS_CONTROL level
+    wait-idle
  
   flush-fifo -> none:
     write-fpga-reg ARDUCHIP_FIFO_2 FIFO_CLEAR_MASK
@@ -646,7 +667,6 @@ Helper methods
     sleep --ms=5  // Increased delay for timing
     
     // Debug: Print what we're trying to write
-    print "    Writing FPGA register 0x$(%02x addr): 0x$(%02x val)"
     
     // Standard approach: single transaction with address and value
     camera.write #[addr | 0x80, val]  // Set bit 7 for write operations
@@ -667,7 +687,6 @@ Helper methods
     
     // This method returns actual register values, not echo values
     result := response[0]
-    print "    Read FPGA register 0x$(%02x addr): 0x$(%02x result)"
     return result
   wait-idle -> none:
     timeout := 25  // 50ms timeout (25 * 2ms)
@@ -675,9 +694,7 @@ Helper methods
       sensor-state := read-fpga-reg CAM_REG_SENSOR_STATE
       state-bits := sensor-state & 0x03
       if state-bits == CAM_REG_SENSOR_STATE_IDLE:
-        print "[DEBUG] wait-idle: sensor ready (state=0x$(%02x sensor-state), bits=0x$(%02x state-bits))"
         return
-      print "[DEBUG] wait-idle: waiting... (state=0x$(%02x sensor-state), bits=0x$(%02x state-bits), timeout=$timeout)"
       sleep --ms=2
       timeout--
     print "[WARNING] wait-idle timeout after 50ms - sensor state never became idle"
@@ -753,6 +770,7 @@ Helper methods
     print "    Format before: 0x$(%02x format-before)"
     
     write-fpga-reg CAM_REG_FORMAT CAM_IMAGE_PIX_FMT_JPG
+    wait-idle
     i2c-success := try-wait-idle "format register write"
     
     if i2c-success:
